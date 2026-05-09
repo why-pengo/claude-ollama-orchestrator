@@ -31,15 +31,25 @@ function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
   let force = null;
   let filePath = null;
+  let dryRun = false;
 
-  // Extract --simple / --complex (positional — must be first)
-  if (remaining[0] === '--simple') {
+  // Extract --simple / --complex (can appear anywhere)
+  const simpleIdx = remaining.indexOf('--simple');
+  if (simpleIdx !== -1) {
     force = 'simple';
-    remaining.shift();
+    remaining.splice(simpleIdx, 1);
   }
-  if (remaining[0] === '--complex') {
+  const complexIdx = remaining.indexOf('--complex');
+  if (complexIdx !== -1) {
     force = 'complex';
-    remaining.shift();
+    remaining.splice(complexIdx, 1);
+  }
+
+  // Extract --dry-run (can appear anywhere in remaining args)
+  const dryRunIdx = remaining.indexOf('--dry-run');
+  if (dryRunIdx !== -1) {
+    dryRun = true;
+    remaining.splice(dryRunIdx, 1);
   }
 
   // Extract --file <path> (can appear anywhere in remaining args)
@@ -54,7 +64,7 @@ function parseArgs(rawArgs) {
   }
 
   const promptText = remaining.join(' ').trim();
-  return { force, filePath, promptText };
+  return { force, filePath, promptText, dryRun };
 }
 
 async function main() {
@@ -76,6 +86,10 @@ Usage:
 Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
+
+Preview routing without executing:
+  node index.js --dry-run "clean up and organise this file"
+  node index.js --dry-run --file src/models.py "Extract all class names"
 
 Pass a file without shell substitution (avoids newline collapsing and ARG_MAX limits):
   node index.js --simple --file backend/app/routers/bp.py "Extract all route paths"
@@ -129,9 +143,10 @@ Examples:
     return;
   }
 
-  const { force, filePath, promptText } = parseArgs(args);
+  const { force, filePath, promptText, dryRun } = parseArgs(args);
 
   let prompt = promptText;
+  let fileContentLength = 0;
 
   if (filePath) {
     const resolved = path.resolve(filePath);
@@ -140,13 +155,32 @@ Examples:
       process.exit(1);
     }
     const content = fs.readFileSync(resolved, 'utf8');
+    fileContentLength = content.length;
     prompt = prompt ? `${prompt}\n\n${content}` : content;
-    console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
+    if (!dryRun) console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
   }
 
   if (!prompt.trim()) {
     console.error('[ERROR] No prompt provided.');
     process.exit(1);
+  }
+
+  if (dryRun) {
+    let complexity, reason;
+    if (force) {
+      complexity = force;
+      reason = `forced via --${force} flag`;
+    } else {
+      const routingPrompt = orchestrator.computeRoutingPrompt(prompt);
+      ({ complexity, reason } = orchestrator.router.assessComplexityWithReason(routingPrompt));
+    }
+    console.log(`\n[DRY-RUN] Route: ${complexity}  ${reason}`);
+    if (filePath) console.log(`File    : ${filePath} (${fileContentLength} chars)`);
+    const instructionText = promptText || '(file content only)';
+    const preview =
+      instructionText.length > 120 ? instructionText.slice(0, 120) + '...' : instructionText;
+    console.log(`Prompt  : (${prompt.length} chars total) ${preview}\n`);
+    return;
   }
 
   try {

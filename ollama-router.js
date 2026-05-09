@@ -34,14 +34,14 @@ class TaskRouter {
   }
 
   // ── Ollama failure handler ────────────────────────────────────────────────────
-  _ollamaFallback(prompt, label, reason, retryHint) {
+  _ollamaFallback(prompt, label, reason, retryHint, elapsed = 0) {
     log(label, reason);
     this.stats.ollamaFallbacks = (this.stats.ollamaFallbacks || 0) + 1;
     this.stats.routes.push({
       ts: new Date().toISOString(),
       route: 'ollama-fallback',
       label,
-      ms: 0,
+      ms: elapsed,
     });
     saveStats(this.stats);
 
@@ -68,6 +68,7 @@ class TaskRouter {
         body: JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
       });
     } catch (err) {
+      const elapsed = Date.now() - t0;
       const code = err.cause?.code;
       if (code === 'ECONNREFUSED') {
         return this._ollamaFallback(
@@ -75,6 +76,7 @@ class TaskRouter {
           'OLLAMA-DOWN',
           'Ollama is not running (connection refused).',
           'Start Ollama (`ollama serve`) and re-run your command',
+          elapsed,
         );
       }
       if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
@@ -83,6 +85,7 @@ class TaskRouter {
           'OLLAMA-TIMEOUT',
           'Ollama timed out (no response).',
           'Check Ollama is responding (`ollama list`) and re-run your command',
+          elapsed,
         );
       }
       return this._ollamaFallback(
@@ -90,6 +93,7 @@ class TaskRouter {
         'OLLAMA-ERROR',
         `Ollama fetch failed: ${err.message}`,
         `Check Ollama is running and re-run your command`,
+        elapsed,
       );
     }
 
@@ -99,6 +103,7 @@ class TaskRouter {
         'OLLAMA-ERROR',
         `Ollama returned ${res.status}: ${res.statusText}`,
         `Check OLLAMA_MODEL env var (currently: ${this.ollamaModel}) and re-run your command`,
+        Date.now() - t0,
       );
     }
 

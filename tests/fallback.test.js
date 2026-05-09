@@ -1,16 +1,27 @@
 // Tests for Ollama error fallback paths.
 // Mocks globalThis.fetch to simulate ECONNREFUSED, ETIMEDOUT, and HTTP non-200.
+// Stubs fs I/O so tests leave no log or stats files behind.
 // Run with: node --test tests/fallback.test.js
 
-const { describe, it, beforeEach, afterEach } = require('node:test');
+const { describe, it, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
 const TaskRouter = require('../ollama-router');
+
+function stubFs() {
+  mock.method(fs, 'appendFileSync', () => {});
+  mock.method(fs, 'writeFileSync', () => {});
+  mock.method(fs, 'readFileSync', () => {
+    throw new Error('no stats');
+  });
+}
 
 describe('Ollama fallback — ECONNREFUSED', () => {
   let router;
   let savedFetch;
 
   beforeEach(() => {
+    stubFs();
     router = new TaskRouter();
     savedFetch = globalThis.fetch;
     globalThis.fetch = async () => {
@@ -22,6 +33,7 @@ describe('Ollama fallback — ECONNREFUSED', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch;
+    mock.restoreAll();
   });
 
   it('returns ollama-fallback source', async () => {
@@ -56,6 +68,7 @@ describe('Ollama fallback — ETIMEDOUT', () => {
   let savedFetch;
 
   beforeEach(() => {
+    stubFs();
     router = new TaskRouter();
     savedFetch = globalThis.fetch;
     globalThis.fetch = async () => {
@@ -67,6 +80,7 @@ describe('Ollama fallback — ETIMEDOUT', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch;
+    mock.restoreAll();
   });
 
   it('returns ollama-fallback source', async () => {
@@ -90,6 +104,7 @@ describe('Ollama fallback — HTTP non-200', () => {
   let savedFetch;
 
   beforeEach(() => {
+    stubFs();
     router = new TaskRouter();
     savedFetch = globalThis.fetch;
     globalThis.fetch = async () => ({
@@ -101,6 +116,7 @@ describe('Ollama fallback — HTTP non-200', () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch;
+    mock.restoreAll();
   });
 
   it('returns ollama-fallback source', async () => {

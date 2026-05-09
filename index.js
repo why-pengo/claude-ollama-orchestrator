@@ -98,13 +98,20 @@ Examples:
     const ollama = stats.ollamaCalls;
     const refs = stats.claudeCodeReferrals;
     const fallbacks = stats.ollamaFallbacks || 0;
-    const total = ollama + refs;
-    const pct = total ? Math.round((ollama / total) * 100) : 0;
+    const total = ollama + refs + fallbacks;
+    const ollamaPct = total ? Math.round((ollama / total) * 100) : 0;
+    const refsPct = total ? Math.round((refs / total) * 100) : 0;
+    const fallbackRoutes = (stats.routes || []).filter((r) => r.route === 'ollama-fallback');
+    const byLabel = fallbackRoutes.reduce((acc, r) => {
+      acc[r.label] = (acc[r.label] || 0) + 1;
+      return acc;
+    }, {});
+    const fbDetail = `down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / error=${byLabel['OLLAMA-ERROR'] || 0}`;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
-    console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
-    console.log(`Claude Code refers : ${refs}  (${100 - pct}% of total)`);
-    console.log(`Ollama fallbacks   : ${fallbacks}  (offline / timeout / error)`);
+    console.log(`Ollama calls       : ${ollama}  (${ollamaPct}% of total — free)`);
+    console.log(`Claude Code refers : ${refs}  (${refsPct}% of total)`);
+    console.log(`Ollama fallbacks   : ${fallbacks}  (${fbDetail})`);
     console.log(`Total requests     : ${total}`);
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // index.js
 
+const fs   = require('fs');
+const path = require('path');
 const ClaudeOrchestrator = require('./claude-orchestrator');
 
 const mySkills = {
@@ -25,6 +27,30 @@ const myRules = {
 
 const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
 
+function parseArgs(rawArgs) {
+  const remaining = [...rawArgs];
+  let force    = null;
+  let filePath = null;
+
+  // Extract --simple / --complex (positional — must be first)
+  if (remaining[0] === '--simple')  { force = 'simple';  remaining.shift(); }
+  if (remaining[0] === '--complex') { force = 'complex'; remaining.shift(); }
+
+  // Extract --file <path> (can appear anywhere in remaining args)
+  const fileIdx = remaining.indexOf('--file');
+  if (fileIdx !== -1) {
+    if (!remaining[fileIdx + 1]) {
+      console.error('[ERROR] --file requires a path argument.');
+      process.exit(1);
+    }
+    filePath = remaining[fileIdx + 1];
+    remaining.splice(fileIdx, 2);
+  }
+
+  const promptText = remaining.join(' ').trim();
+  return { force, filePath, promptText };
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -37,6 +63,7 @@ Complex tasks → flagged for your Claude Code session
 
 Usage:
   node index.js "Your request"
+  node index.js --file <path> "Your instruction"
   node index.js --stats
   node index.js --reset
 
@@ -44,13 +71,18 @@ Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
 
+Pass a file without shell substitution (avoids newline collapsing and ARG_MAX limits):
+  node index.js --simple --file backend/app/routers/bp.py "Extract all route paths"
+  node index.js --file src/models.py "Summarise what this module does"
+
 Env vars:
-  OLLAMA_MODEL   default: mistral
+  OLLAMA_MODEL      default: mistral
+  OLLAMA_ORCH_PATH  set this in your shell profile so CLAUDE.md instructions are portable
 
 Examples:
   node index.js "Format this JSON: {name:'alice'}"
-  node index.js "Extract all email addresses from this text: ..."
-  node index.js --simple "Summarise this in one sentence: ..."
+  node index.js --simple --file data.csv "Convert this to JSON"
+  node index.js --file routers/bp.py "Extract all API route paths and HTTP methods"
     `);
     return;
   }
@@ -80,11 +112,20 @@ Examples:
     return;
   }
 
-  let force  = null;
-  let prompt = args.join(' ');
+  const { force, filePath, promptText } = parseArgs(args);
 
-  if (args[0] === '--simple')  { force = 'simple';  prompt = args.slice(1).join(' '); }
-  if (args[0] === '--complex') { force = 'complex'; prompt = args.slice(1).join(' '); }
+  let prompt = promptText;
+
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      console.error(`[ERROR] File not found: ${resolved}`);
+      process.exit(1);
+    }
+    const content = fs.readFileSync(resolved, 'utf8');
+    prompt = prompt ? `${prompt}\n\n${content}` : content;
+    console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
+  }
 
   if (!prompt.trim()) {
     console.error('[ERROR] No prompt provided.');

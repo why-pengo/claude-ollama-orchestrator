@@ -564,9 +564,8 @@ read the file, pass content inline, and call the orchestrator via Bash.
 ```markdown
 ## Task routing — Ollama for generative simple tasks
 
-For generative simple tasks, offload to the local Ollama orchestrator:
-
-    node /path/to/claude_with_local_llm/index.js --simple "<prompt with content inline>"
+Setup: set OLLAMA_ORCH_PATH in your shell profile:
+  export OLLAMA_ORCH_PATH=/path/to/claude_with_local_llm/index.js
 
 | Category | Examples | Tool |
 |---|---|---|
@@ -574,9 +573,9 @@ For generative simple tasks, offload to the local Ollama orchestrator:
 | Generative simple tasks | Extract values, convert formats, summarise | Ollama orchestrator |
 | Generative complex tasks | Debug, design, refactor, security | Claude Code directly |
 
-When reading files to pass to Ollama, pipe the content inline:
-
-    node /path/to/index.js --simple "Extract all route paths from: $(cat routers/bp.py)"
+Use --file to pass file content safely (avoids shell substitution and ARG_MAX limits):
+  ${OLLAMA_ORCH_PATH} --simple --file routers/bp.py "Extract all API route paths"
+  ${OLLAMA_ORCH_PATH} --simple --file models/bp.py "Summarise what this module does"
 ```
 
 **Important:** never send deterministic tool operations (formatting, linting,

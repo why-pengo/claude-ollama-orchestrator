@@ -15,7 +15,7 @@ Complex tasks print a ready-to-paste prompt for your Claude Code session. Simple
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) 18+
+- [Node.js](https://nodejs.org) 22+
 - [Ollama](https://ollama.com) running locally (`ollama serve`)
 - A model pulled, e.g. `ollama pull mistral`
 
@@ -26,7 +26,7 @@ git clone https://github.com/why-pengo/claude-ollama-orchestrator.git
 cd claude-ollama-orchestrator
 ```
 
-No runtime dependencies. Dev tools (ESLint, Prettier) are optional:
+Install dependencies (runtime + dev tools):
 
 ```bash
 make install
@@ -44,6 +44,13 @@ node index.js --complex "Design a microservice architecture"
 # Pass a file (avoids shell substitution and ARG_MAX limits)
 node index.js --file src/models.py "Extract all class names"
 node index.js --simple --file data.csv "Convert this to JSON"
+
+# Preview routing without executing
+node index.js --dry-run "clean up and organise this file"
+node index.js --dry-run --file src/models.py "Extract all class names"
+
+# Live TUI dashboard
+node index.js --dashboard
 
 # Stats and log
 node index.js --stats
@@ -63,6 +70,7 @@ make reset   # reset stats
 | Variable           | Default   | Description                                                                             |
 | ------------------ | --------- | --------------------------------------------------------------------------------------- |
 | `OLLAMA_MODEL`     | `mistral` | Model to use for simple tasks                                                           |
+| `OLLAMA_PORT`      | `11434`   | Port Ollama listens on (used by the dashboard health check)                             |
 | `OLLAMA_ORCH_PATH` | —         | Full path to `index.js` — set in your shell profile for portable CLAUDE.md instructions |
 
 Example shell profile entry:
@@ -94,7 +102,7 @@ For simple generative tasks, run the Ollama orchestrator via Bash:
 ## Development
 
 ```bash
-make test          # run the test suite (36 tests, no Ollama required)
+make test          # run the test suite (78 tests, no Ollama required)
 make lint          # ESLint
 make format        # Prettier --write
 make format-check  # Prettier --check (used in CI)
@@ -120,10 +128,10 @@ assessComplexity("Clean up and organise")     → complex ✓  (clean beats orga
 
 ## Roadmap
 
-| #                                                                      | Feature                                 |
-| ---------------------------------------------------------------------- | --------------------------------------- |
-| [#1](https://github.com/why-pengo/claude-ollama-orchestrator/issues/1) | TUI dashboard (`--dashboard` mode)      |
-| [#3](https://github.com/why-pengo/claude-ollama-orchestrator/issues/3) | Auto-fallback when Ollama is offline    |
-| [#4](https://github.com/why-pengo/claude-ollama-orchestrator/issues/4) | `--dry-run` flag to preview routing     |
-| [#5](https://github.com/why-pengo/claude-ollama-orchestrator/issues/5) | Estimated cost savings in `--stats`     |
-| [#6](https://github.com/why-pengo/claude-ollama-orchestrator/issues/6) | Three-tier routing with remote GPU node |
+| #                                                                      | Feature                                 | Status  |
+| ---------------------------------------------------------------------- | --------------------------------------- | ------- |
+| [#1](https://github.com/why-pengo/claude-ollama-orchestrator/issues/1) | TUI dashboard (`--dashboard` mode)      | ✅ done |
+| [#3](https://github.com/why-pengo/claude-ollama-orchestrator/issues/3) | Auto-fallback when Ollama is offline    | ✅ done |
+| [#4](https://github.com/why-pengo/claude-ollama-orchestrator/issues/4) | `--dry-run` flag to preview routing     | ✅ done |
+| [#5](https://github.com/why-pengo/claude-ollama-orchestrator/issues/5) | Estimated cost savings in `--stats`     |         |
+| [#6](https://github.com/why-pengo/claude-ollama-orchestrator/issues/6) | Three-tier routing with remote GPU node |         |

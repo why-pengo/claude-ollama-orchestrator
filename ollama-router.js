@@ -250,4 +250,12 @@ class TaskRouter {
   }
 }
 
+export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
+
+export function estimateSavings(chars) {
+  const tokens = Math.ceil(chars / 4);
+  const savings = ((tokens / 1_000_000) * SAVINGS_RATE_PER_M_TOKENS).toFixed(2);
+  return { tokens, savings };
+}
+
 export default TaskRouter;

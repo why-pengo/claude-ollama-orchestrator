@@ -6,6 +6,7 @@ import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } from './ollama-router.js';
 
 const h = React.createElement;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,8 +23,9 @@ function StatsPanel({ stats, ollamaOnline, width }) {
   const total = ollama + refs + fallbacks;
   const ollamaPct = total ? Math.round((ollama / total) * 100) : 0;
   const refsPct = total ? Math.round((refs / total) * 100) : 0;
-  const estimatedTokens = Math.ceil((stats?.totalOffloadedChars ?? 0) / 4);
-  const estimatedSavings = ((estimatedTokens / 1_000_000) * 3.0).toFixed(2);
+  const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
+    stats?.totalOffloadedChars ?? 0,
+  );
 
   const fbRoutes = (stats?.routes || []).filter((r) => r.route === 'ollama-fallback');
   const byLabel = fbRoutes.reduce((acc, r) => {
@@ -62,7 +64,11 @@ function StatsPanel({ stats, ollamaOnline, width }) {
     ),
     h(Text, null, `Total         :${String(total).padStart(5)}`),
     h(Text, null, `Offloaded tkns: ${estimatedTokens.toLocaleString()}`),
-    h(Text, { color: 'green' }, `Est. savings  : ~$${estimatedSavings}`),
+    h(
+      Text,
+      { color: 'green' },
+      `Est. savings  : ~$${estimatedSavings} ($${SAVINGS_RATE_PER_M_TOKENS}/M)`,
+    ),
     h(Text, null, ''),
     h(Text, { bold: true }, 'Last 5 routes:'),
     ...(last5.length === 0

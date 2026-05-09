@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // index.js
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const ClaudeOrchestrator = require('./claude-orchestrator');
 
@@ -14,14 +14,14 @@ Provide specific, actionable feedback.`,
 Look for patterns, trends, and outliers.
 Suggest appropriate visualisations and statistical approaches.`,
 
-  'documentation': `You are a technical writer.
+  documentation: `You are a technical writer.
 Write clear, concise documentation with examples and code snippets.
 Use active voice and plain language.`,
 };
 
 const myRules = {
-  format:   'Use markdown formatting in all responses.',
-  tone:     'Be professional but conversational.',
+  format: 'Use markdown formatting in all responses.',
+  tone: 'Be professional but conversational.',
   accuracy: 'Double-check facts before presenting them.',
 };
 
@@ -29,12 +29,18 @@ const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
 
 function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
-  let force    = null;
+  let force = null;
   let filePath = null;
 
   // Extract --simple / --complex (positional — must be first)
-  if (remaining[0] === '--simple')  { force = 'simple';  remaining.shift(); }
-  if (remaining[0] === '--complex') { force = 'complex'; remaining.shift(); }
+  if (remaining[0] === '--simple') {
+    force = 'simple';
+    remaining.shift();
+  }
+  if (remaining[0] === '--complex') {
+    force = 'complex';
+    remaining.shift();
+  }
 
   // Extract --file <path> (can appear anywhere in remaining args)
   const fileIdx = remaining.indexOf('--file');
@@ -88,11 +94,11 @@ Examples:
   }
 
   if (args[0] === '--stats') {
-    const stats  = orchestrator.getStats();
+    const stats = orchestrator.getStats();
     const ollama = stats.ollamaCalls;
-    const refs   = stats.claudeCodeReferrals;
-    const total  = ollama + refs;
-    const pct    = total ? Math.round((ollama / total) * 100) : 0;
+    const refs = stats.claudeCodeReferrals;
+    const total = ollama + refs;
+    const pct = total ? Math.round((ollama / total) * 100) : 0;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
     console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
@@ -101,7 +107,9 @@ Examples:
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');
-      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`));
+      last5.forEach((r) =>
+        console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`),
+      );
     }
     return;
   }
@@ -140,4 +148,8 @@ Examples:
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { parseArgs };

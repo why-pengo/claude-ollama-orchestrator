@@ -29,11 +29,11 @@ and Claude Code (which you already have open) handles the rest.
 A common mistake is sending deterministic tool operations to Ollama. There
 are three distinct categories:
 
-| Category | Examples | Right tool |
-|---|---|---|
-| Deterministic tool ops | Format Python, lint, run tests, migrate DB | CLI directly (`make format`, `black`, etc.) |
-| Generative simple tasks | Extract values, convert formats, summarise content | Ollama orchestrator |
-| Generative complex tasks | Debug, design, refactor, security review | Claude Code directly |
+| Category                 | Examples                                           | Right tool                                  |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------- |
+| Deterministic tool ops   | Format Python, lint, run tests, migrate DB         | CLI directly (`make format`, `black`, etc.) |
+| Generative simple tasks  | Extract values, convert formats, summarise content | Ollama orchestrator                         |
+| Generative complex tasks | Debug, design, refactor, security review           | Claude Code directly                        |
 
 **Ollama is for generative output** — tasks where a language model produces
 the answer. It cannot run `black` or `isort`; it can only generate text.
@@ -41,16 +41,16 @@ If a task has a deterministic CLI tool that does the job, use the tool.
 
 ### Routing Reference
 
-| Task Type                    | Backend      | Example                        |
-|------------------------------|--------------|--------------------------------|
-| Data formatting              | Ollama       | Format JSON, convert CSV       |
-| Simple text transformations  | Ollama       | Convert markdown to HTML       |
-| Extract / parse / organise   | Ollama       | Pull emails from text          |
-| Write documentation drafts   | Ollama       | Basic README, comments         |
-| Code cleanup / refactoring   | Claude Code  | Clean up, simplify, reorganise |
-| Complex code generation      | Claude Code  | Design a service, algorithm    |
-| Architecture / planning      | Claude Code  | System design, tradeoffs       |
-| Debugging / security review  | Claude Code  | Find bugs, audit for vulns     |
+| Task Type                   | Backend     | Example                        |
+| --------------------------- | ----------- | ------------------------------ |
+| Data formatting             | Ollama      | Format JSON, convert CSV       |
+| Simple text transformations | Ollama      | Convert markdown to HTML       |
+| Extract / parse / organise  | Ollama      | Pull emails from text          |
+| Write documentation drafts  | Ollama      | Basic README, comments         |
+| Code cleanup / refactoring  | Claude Code | Clean up, simplify, reorganise |
+| Complex code generation     | Claude Code | Design a service, algorithm    |
+| Architecture / planning     | Claude Code | System design, tradeoffs       |
+| Debugging / security review | Claude Code | Find bugs, audit for vulns     |
 
 ---
 
@@ -91,11 +91,11 @@ No API key required.
 
 Model choice matters a lot for response time. Benchmarks on **Apple M4 Pro**:
 
-| Model         | Size  | Cold start | Warm      | Recommended for          |
-|---------------|-------|-----------|-----------|--------------------------|
-| `llama3.2:3b` | 2 GB  | ~5s       | < 1s      | Fastest, high-volume     |
-| `mistral`     | 4 GB  | ~20s      | ~3s       | Best balance (default)   |
-| `qwen3.6`     | 23 GB | ~30s      | ~10s      | High quality, slow       |
+| Model         | Size  | Cold start | Warm | Recommended for        |
+| ------------- | ----- | ---------- | ---- | ---------------------- |
+| `llama3.2:3b` | 2 GB  | ~5s        | < 1s | Fastest, high-volume   |
+| `mistral`     | 4 GB  | ~20s       | ~3s  | Best balance (default) |
+| `qwen3.6`     | 23 GB | ~30s       | ~10s | High quality, slow     |
 
 > **Cold start** = first request after `ollama serve` (model loads into memory).
 > **Warm** = subsequent requests in the same session. Always test warm — that's
@@ -126,11 +126,11 @@ curl http://localhost:11434/api/generate \
 // Requires Node.js 18+ (native fetch — no npm install needed)
 // Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const STATS_FILE = path.join(__dirname, 'orchestrator-stats.json');
-const LOG_FILE   = path.join(__dirname, 'orchestrator.log');
+const LOG_FILE = path.join(__dirname, 'orchestrator.log');
 
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
@@ -152,30 +152,35 @@ function saveStats(stats) {
 
 class TaskRouter {
   constructor(ollamaUrl = 'http://localhost:11434') {
-    this.ollamaUrl   = ollamaUrl;
+    this.ollamaUrl = ollamaUrl;
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
-    this.stats       = loadStats();
+    this.stats = loadStats();
   }
 
   // ── Local Ollama ─────────────────────────────────────────────────────────────
   async callOllama(prompt) {
-    const t0  = Date.now();
+    const t0 = Date.now();
     log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel}`);
 
     const res = await fetch(`${this.ollamaUrl}/api/generate`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model: this.ollamaModel, prompt, stream: false }),
+      body: JSON.stringify({ model: this.ollamaModel, prompt, stream: false }),
     });
     if (!res.ok) throw new Error(`Ollama error: ${res.statusText}`);
 
-    const data    = await res.json();
+    const data = await res.json();
     const elapsed = Date.now() - t0;
 
     log('OLLAMA', `Done in ${elapsed}ms — response ${data.response?.length ?? 0} chars`);
 
     this.stats.ollamaCalls++;
-    this.stats.routes.push({ ts: new Date().toISOString(), route: 'ollama', model: this.ollamaModel, ms: elapsed });
+    this.stats.routes.push({
+      ts: new Date().toISOString(),
+      route: 'ollama',
+      model: this.ollamaModel,
+      ms: elapsed,
+    });
     saveStats(this.stats);
 
     return { source: 'ollama', model: this.ollamaModel, text: data.response };
@@ -189,22 +194,45 @@ class TaskRouter {
     saveStats(this.stats);
     return {
       source: 'claude-code',
-      model:  'n/a',
-      text:   `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
+      model: 'n/a',
+      text: `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
     };
   }
 
   // ── Complexity assessment ────────────────────────────────────────────────────
   // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
   assessComplexity(prompt) {
-    const simple  = ['format','extract','convert','parse','organise',
-                     'organize','list','template','rename','sort'];
-    const complex = ['design','architect','optimise','optimize','debug','reason',
-                     'plan','refactor','security','tradeoff','implement','explain','clean'];
-    const lower   = prompt.toLowerCase();
+    const simple = [
+      'format',
+      'extract',
+      'convert',
+      'parse',
+      'organise',
+      'organize',
+      'list',
+      'template',
+      'rename',
+      'sort',
+    ];
+    const complex = [
+      'design',
+      'architect',
+      'optimise',
+      'optimize',
+      'debug',
+      'reason',
+      'plan',
+      'refactor',
+      'security',
+      'tradeoff',
+      'implement',
+      'explain',
+      'clean',
+    ];
+    const lower = prompt.toLowerCase();
 
-    if (complex.some(kw => lower.includes(kw))) return 'complex';
-    if (simple.some(kw =>  lower.includes(kw))) return 'simple';
+    if (complex.some((kw) => lower.includes(kw))) return 'complex';
+    if (simple.some((kw) => lower.includes(kw))) return 'simple';
     return prompt.length > 500 ? 'complex' : 'simple';
   }
 
@@ -213,12 +241,14 @@ class TaskRouter {
     const complexity = forceComplexity ?? this.assessComplexity(prompt);
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
-    if (complexity === 'simple')  return this.callOllama(prompt);
+    if (complexity === 'simple') return this.callOllama(prompt);
     if (complexity === 'complex') return this.referToClaudeCode(prompt);
     throw new Error(`Unknown complexity: ${complexity}`);
   }
 
-  getStats()   { return { ...this.stats }; }
+  getStats() {
+    return { ...this.stats };
+  }
   resetStats() {
     this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
     saveStats(this.stats);
@@ -235,7 +265,7 @@ module.exports = TaskRouter;
 ```javascript
 // claude-orchestrator.js
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const TaskRouter = require('./ollama-router');
 
@@ -249,14 +279,14 @@ function log(tag, message) {
 
 class ClaudeOrchestrator {
   constructor(skills = {}, rules = {}) {
-    this.router  = new TaskRouter();
-    this.skills  = skills;  // trigger keyword → system-prompt string
-    this.rules   = rules;   // label → constraint string
+    this.router = new TaskRouter();
+    this.skills = skills; // trigger keyword → system-prompt string
+    this.rules = rules; // label → constraint string
     this.history = [];
   }
 
   applySkills(prompt) {
-    let out     = prompt;
+    let out = prompt;
     let applied = [];
     for (const [keyword, skillPrompt] of Object.entries(this.skills)) {
       if (prompt.toLowerCase().includes(keyword)) {
@@ -277,7 +307,7 @@ class ClaudeOrchestrator {
     log('REQUEST', userRequest.slice(0, 120) + (userRequest.length > 120 ? '…' : ''));
 
     let prompt = this.applySkills(userRequest);
-    prompt     = this.enforceRules(prompt);
+    prompt = this.enforceRules(prompt);
 
     const result = await this.router.route(prompt, forceComplexity);
 
@@ -315,7 +345,7 @@ module.exports = ClaudeOrchestrator;
 #!/usr/bin/env node
 // index.js
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const ClaudeOrchestrator = require('./claude-orchestrator');
 
@@ -328,14 +358,14 @@ Provide specific, actionable feedback.`,
 Look for patterns, trends, and outliers.
 Suggest appropriate visualisations and statistical approaches.`,
 
-  'documentation': `You are a technical writer.
+  documentation: `You are a technical writer.
 Write clear, concise documentation with examples and code snippets.
 Use active voice and plain language.`,
 };
 
 const myRules = {
-  format:   'Use markdown formatting in all responses.',
-  tone:     'Be professional but conversational.',
+  format: 'Use markdown formatting in all responses.',
+  tone: 'Be professional but conversational.',
   accuracy: 'Double-check facts before presenting them.',
 };
 
@@ -343,12 +373,18 @@ const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
 
 function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
-  let force    = null;
+  let force = null;
   let filePath = null;
 
   // Extract --simple / --complex (positional — must be first)
-  if (remaining[0] === '--simple')  { force = 'simple';  remaining.shift(); }
-  if (remaining[0] === '--complex') { force = 'complex'; remaining.shift(); }
+  if (remaining[0] === '--simple') {
+    force = 'simple';
+    remaining.shift();
+  }
+  if (remaining[0] === '--complex') {
+    force = 'complex';
+    remaining.shift();
+  }
 
   // Extract --file <path> (can appear anywhere in remaining args)
   const fileIdx = remaining.indexOf('--file');
@@ -401,11 +437,11 @@ Examples:
   }
 
   if (args[0] === '--stats') {
-    const stats  = orchestrator.getStats();
+    const stats = orchestrator.getStats();
     const ollama = stats.ollamaCalls;
-    const refs   = stats.claudeCodeReferrals;
-    const total  = ollama + refs;
-    const pct    = total ? Math.round((ollama / total) * 100) : 0;
+    const refs = stats.claudeCodeReferrals;
+    const total = ollama + refs;
+    const pct = total ? Math.round((ollama / total) * 100) : 0;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
     console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
@@ -414,7 +450,9 @@ Examples:
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');
-      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`));
+      last5.forEach((r) =>
+        console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`),
+      );
     }
     return;
   }
@@ -506,10 +544,10 @@ your-project/
 
 **Env vars:**
 
-| Var | Default | Purpose |
-|-----|---------|---------|
-| `OLLAMA_MODEL` | `mistral` | Local model to use |
-| `OLLAMA_ORCH_PATH` | — | Full path to `index.js` — set in shell profile for portable CLAUDE.md instructions |
+| Var                | Default   | Purpose                                                                            |
+| ------------------ | --------- | ---------------------------------------------------------------------------------- |
+| `OLLAMA_MODEL`     | `mistral` | Local model to use                                                                 |
+| `OLLAMA_ORCH_PATH` | —         | Full path to `index.js` — set in shell profile for portable CLAUDE.md instructions |
 
 - [ ] `ollama-router.js` created
 - [ ] `claude-orchestrator.js` created
@@ -598,11 +636,11 @@ confirm the fix before committing.
 
 Tested on **Apple M4 Pro** with Ollama running locally.
 
-| Model         | Size  | Cold start | Warm  | Verdict                          |
-|---------------|-------|-----------|-------|----------------------------------|
-| `llama3.2:3b` | 2 GB  | ~5s       | <1s   | Best for high-volume simple tasks|
-| `mistral`     | 4 GB  | ~20s      | ~3s   | Good default balance             |
-| `qwen3.6`     | 23 GB | ~30s      | ~10s  | Overkill for simple routing      |
+| Model         | Size  | Cold start | Warm | Verdict                           |
+| ------------- | ----- | ---------- | ---- | --------------------------------- |
+| `llama3.2:3b` | 2 GB  | ~5s        | <1s  | Best for high-volume simple tasks |
+| `mistral`     | 4 GB  | ~20s       | ~3s  | Good default balance              |
+| `qwen3.6`     | 23 GB | ~30s       | ~10s | Overkill for simple routing       |
 
 **Cold start is a one-time cost per session.** After the first request,
 the model stays warm in memory for the duration of your `ollama serve` session.
@@ -612,16 +650,16 @@ Run a throwaway warm-up request if latency matters on the first real task.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| `ECONNREFUSED localhost:11434` | Run `ollama serve` in another terminal |
-| `model not found` | Run `ollama pull mistral` |
-| First request is very slow | Normal — cold start. Subsequent requests will be fast |
-| All requests are slow | Model is too large for your RAM; try `llama3.2:3b` |
-| `fetch is not defined` | Upgrade to Node.js 18+: `node --version` |
-| Wrong route (simple sent to Ollama when it shouldn't be) | Use `--complex` flag and add keyword to complex list |
-| `OLLAMA_ORCH_PATH` not found in CLAUDE.md session | Add `export OLLAMA_ORCH_PATH=...` to `~/.zshrc` and restart Claude Code |
-| `[ERROR] File not found` with `--file` | Path is relative to where you run the command — use an absolute path or `cd` first |
+| Symptom                                                  | Fix                                                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `ECONNREFUSED localhost:11434`                           | Run `ollama serve` in another terminal                                             |
+| `model not found`                                        | Run `ollama pull mistral`                                                          |
+| First request is very slow                               | Normal — cold start. Subsequent requests will be fast                              |
+| All requests are slow                                    | Model is too large for your RAM; try `llama3.2:3b`                                 |
+| `fetch is not defined`                                   | Upgrade to Node.js 18+: `node --version`                                           |
+| Wrong route (simple sent to Ollama when it shouldn't be) | Use `--complex` flag and add keyword to complex list                               |
+| `OLLAMA_ORCH_PATH` not found in CLAUDE.md session        | Add `export OLLAMA_ORCH_PATH=...` to `~/.zshrc` and restart Claude Code            |
+| `[ERROR] File not found` with `--file`                   | Path is relative to where you run the command — use an absolute path or `cd` first |
 
 ---
 
@@ -649,20 +687,20 @@ Tested on a real FastAPI + Vue project (health_track). Observed behaviour:
 ## Task routing — Ollama for generative simple tasks
 
 Setup: set OLLAMA_ORCH_PATH in your shell profile:
-  export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
+export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
 
-| Category | Examples | Tool |
-|---|---|---|
-| Deterministic tool ops | Format Python, lint, run tests | CLI directly (`make format`, etc.) |
-| Generative simple tasks | Extract values, convert formats, summarise | Ollama orchestrator |
-| Generative complex tasks | Debug, design, refactor, security | Claude Code directly |
+| Category                 | Examples                                   | Tool                               |
+| ------------------------ | ------------------------------------------ | ---------------------------------- |
+| Deterministic tool ops   | Format Python, lint, run tests             | CLI directly (`make format`, etc.) |
+| Generative simple tasks  | Extract values, convert formats, summarise | Ollama orchestrator                |
+| Generative complex tasks | Debug, design, refactor, security          | Claude Code directly               |
 
 Never send to Ollama: make format, make lint, make test, make migrate —
 these are deterministic CLI operations, not generative tasks.
 
 Use --file to pass file content safely (avoids shell substitution and ARG_MAX limits):
-  ${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Extract all route paths"
-  ${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Summarise what this module does"
+${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Extract all route paths"
+${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Summarise what this module does"
 ```
 
 **Important:** Claude Code will follow the instruction for clear-cut cases but
@@ -674,6 +712,7 @@ may self-correct when it recognises a better tool exists. This is good behaviour
 ## Tips
 
 **Do**
+
 - Run a warm-up request at the start of each session to pre-load the model
 - Use `--simple` / `--complex` flags until you trust auto-routing
 - Gradually expand the keyword lists based on real misroutes you observe
@@ -681,6 +720,7 @@ may self-correct when it recognises a better tool exists. This is good behaviour
 - Set `OLLAMA_MODEL` in every session that will call the orchestrator
 
 **Don't**
+
 - Use a 20GB+ model as your default for simple tasks — pick the smallest
   model that gives acceptable quality
 - Route sensitive data through Ollama if your machine could be compromised
@@ -689,4 +729,4 @@ may self-correct when it recognises a better tool exists. This is good behaviour
 
 ---
 
-*Guide version: May 2026 — Node 18+, Ollama 0.x, Apple M4 Pro benchmarks*
+_Guide version: May 2026 — Node 18+, Ollama 0.x, Apple M4 Pro benchmarks_

@@ -5,6 +5,9 @@ orchestrator-stats.json
 # Secrets
 .env
 
+# Dependencies
+node_modules/
+
 # macOS
 .DS_Store
 

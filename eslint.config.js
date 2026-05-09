@@ -12,6 +12,9 @@ export default [
         fetch: 'readonly',
         TextDecoder: 'readonly',
         URL: 'readonly',
+        AbortSignal: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     rules: {

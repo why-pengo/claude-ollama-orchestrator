@@ -83,6 +83,7 @@ Usage:
   node index.js --file <path> "Your instruction"
   node index.js --stats
   node index.js --reset
+  node index.js --dashboard
 
 Force routing:
   node index.js --simple  "Format this JSON ..."
@@ -105,6 +106,12 @@ Examples:
   node index.js --simple --file data.csv "Convert this to JSON"
   node index.js --file routers/bp.py "Extract all API route paths and HTTP methods"
     `);
+    return;
+  }
+
+  if (args[0] === '--dashboard') {
+    const { default: launchDashboard } = await import('./dashboard.js');
+    await launchDashboard();
     return;
   }
 

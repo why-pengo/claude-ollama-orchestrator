@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ClaudeOrchestrator from './claude-orchestrator.js';
+import { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } from './ollama-router.js';
 
 const mySkills = {
   'code-review': `You are an expert code reviewer.
@@ -135,12 +136,20 @@ Examples:
       return acc;
     }, {});
     const fbDetail = `down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / error=${byLabel['OLLAMA-ERROR'] || 0}`;
+    const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
+      stats.totalOffloadedChars || 0,
+    );
+
     console.log('\nOrchestrator Stats');
     console.log('------------------');
     console.log(`Ollama calls       : ${ollama}  (${ollamaPct}% of total — free)`);
     console.log(`Claude Code refers : ${refs}  (${refsPct}% of total)`);
     console.log(`Ollama fallbacks   : ${fallbacks}  (${fbDetail})`);
     console.log(`Total requests     : ${total}`);
+    console.log(`Offloaded tokens   : ${estimatedTokens.toLocaleString()}`);
+    console.log(
+      `Estimated savings  : ~$${estimatedSavings}  (vs Claude Sonnet @ $${SAVINGS_RATE_PER_M_TOKENS}/M input tokens)`,
+    );
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');

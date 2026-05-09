@@ -20,7 +20,13 @@ function loadStats() {
   try {
     return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
   } catch {
-    return { ollamaCalls: 0, claudeCodeReferrals: 0, ollamaFallbacks: 0, routes: [] };
+    return {
+      ollamaCalls: 0,
+      claudeCodeReferrals: 0,
+      ollamaFallbacks: 0,
+      totalOffloadedChars: 0,
+      routes: [],
+    };
   }
 }
 
@@ -141,6 +147,7 @@ class TaskRouter {
     log('OLLAMA', `Done in ${elapsed}ms — ${fullResponse.length} chars`);
 
     this.stats.ollamaCalls++;
+    this.stats.totalOffloadedChars = (this.stats.totalOffloadedChars || 0) + prompt.length;
     this.stats.routes.push({
       ts: new Date().toISOString(),
       route: 'ollama',
@@ -232,9 +239,23 @@ class TaskRouter {
   }
 
   resetStats() {
-    this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, ollamaFallbacks: 0, routes: [] };
+    this.stats = {
+      ollamaCalls: 0,
+      claudeCodeReferrals: 0,
+      ollamaFallbacks: 0,
+      totalOffloadedChars: 0,
+      routes: [],
+    };
     saveStats(this.stats);
   }
+}
+
+export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
+
+export function estimateSavings(chars) {
+  const tokens = Math.ceil(chars / 4);
+  const savings = ((tokens / 1_000_000) * SAVINGS_RATE_PER_M_TOKENS).toFixed(2);
+  return { tokens, savings };
 }
 
 export default TaskRouter;

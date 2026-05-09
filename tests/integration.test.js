@@ -3,7 +3,7 @@
 // exit 0, correct output, no Ollama call, no log/stats writes.
 // Run with: node --test tests/integration.test.js
 
-import { describe, it, before } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -14,6 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const INDEX = join(ROOT, 'index.js');
 const LOG_FILE = join(ROOT, 'orchestrator.log');
+const STATS_FILE = join(ROOT, 'orchestrator-stats.json');
 
 function run(...args) {
   return spawnSync('node', [INDEX, ...args], { cwd: ROOT, encoding: 'utf8' });
@@ -101,5 +102,52 @@ describe('--dry-run: prompt display', () => {
   it('shows chars total in prompt line', () => {
     const { stdout } = run('--dry-run', 'format this JSON');
     assert.ok(stdout.includes('chars total'));
+  });
+});
+
+describe('--stats: estimated savings output', () => {
+  // 4,000,000 chars / 4 = 1,000,000 tokens; 1,000,000 / 1M * $3 = $3.00
+  const testStats = {
+    ollamaCalls: 10,
+    claudeCodeReferrals: 2,
+    ollamaFallbacks: 1,
+    totalOffloadedChars: 4_000_000,
+    routes: [],
+  };
+  let originalStats;
+
+  before(() => {
+    originalStats = fs.existsSync(STATS_FILE) ? fs.readFileSync(STATS_FILE, 'utf8') : null;
+    fs.writeFileSync(STATS_FILE, JSON.stringify(testStats));
+  });
+
+  after(() => {
+    if (originalStats !== null) fs.writeFileSync(STATS_FILE, originalStats);
+    else fs.rmSync(STATS_FILE, { force: true });
+  });
+
+  it('shows Offloaded tokens line', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('Offloaded tokens'));
+  });
+
+  it('shows correct token count (1,000,000)', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('1,000,000'));
+  });
+
+  it('shows Estimated savings line', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('Estimated savings'));
+  });
+
+  it('shows correct savings amount (~$3.00)', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('$3.00'));
+  });
+
+  it('labels the pricing rate used', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('$3/M') || stdout.includes('$3.0/M'));
   });
 });

@@ -76,7 +76,7 @@ class TaskRouter {
     const simple  = ['format','extract','convert','parse','organise',
                      'organize','list','template','rename','sort'];
     const complex = ['design','architect','optimise','optimize','debug','reason',
-                     'plan','refactor','security','tradeoff','implement','explain'];
+                     'plan','refactor','security','tradeoff','implement','explain','clean'];
     const lower   = prompt.toLowerCase();
 
     if (complex.some(kw => lower.includes(kw))) return 'complex';

@@ -1,7 +1,7 @@
 // dashboard.js — live TUI dashboard for the orchestrator.
 // Renders stats + log feed using ink v7 + React 19. No JSX — uses React.createElement.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -67,7 +67,7 @@ function StatsPanel({ stats, ollamaOnline, width }) {
           h(
             Text,
             { key: i },
-            `  ${r.ts.slice(11, 19)}  ${r.route.padEnd(15)} ${r.ms ? `${r.ms}ms` : ''}`,
+            `  ${r.ts.slice(11, 19)}  ${r.route.padEnd(15)} ${r.ms != null ? `${r.ms}ms` : ''}`,
           ),
         )),
   );
@@ -110,6 +110,7 @@ function Dashboard() {
   const [ollamaOnline, setOllamaOnline] = useState(null);
   const { exit } = useApp();
   const { stdout } = useStdout();
+  const ollamaAbortRef = useRef(null);
 
   useEffect(() => {
     function tick() {
@@ -119,20 +120,39 @@ function Dashboard() {
         setStats(null);
       }
       try {
-        const raw = fs.readFileSync(LOG_FILE, 'utf8');
-        const tagged = raw.split('\n').filter((l) => l.includes('['));
+        const stat = fs.statSync(LOG_FILE);
+        const tail = 8192;
+        const offset = Math.max(0, stat.size - tail);
+        const buf = Buffer.alloc(Math.min(tail, stat.size));
+        const fd = fs.openSync(LOG_FILE, 'r');
+        fs.readSync(fd, buf, 0, buf.length, offset);
+        fs.closeSync(fd);
+        const tagged = buf
+          .toString('utf8')
+          .split('\n')
+          .filter((l) => l.includes('['));
         setLogLines(tagged.slice(-20).reverse());
       } catch {
         setLogLines([]);
       }
-      fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(900) })
+      ollamaAbortRef.current?.abort();
+      const ac = new AbortController();
+      ollamaAbortRef.current = ac;
+      fetch(`${OLLAMA_URL}/api/tags`, {
+        signal: AbortSignal.any([ac.signal, AbortSignal.timeout(900)]),
+      })
         .then((r) => setOllamaOnline(r.ok))
-        .catch(() => setOllamaOnline(false));
+        .catch((_err) => {
+          if (!ac.signal.aborted) setOllamaOnline(false);
+        });
     }
 
     tick();
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      ollamaAbortRef.current?.abort();
+    };
   }, []);
 
   useInput((input) => {

@@ -4,6 +4,9 @@
   "description": "Routes simple tasks to local Ollama, complex tasks to Claude Code",
   "type": "module",
   "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "lint": "eslint .",

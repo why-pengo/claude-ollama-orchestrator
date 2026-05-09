@@ -110,8 +110,14 @@ Examples:
   }
 
   if (args[0] === '--dashboard') {
-    const { default: launchDashboard } = await import('./dashboard.js');
-    await launchDashboard();
+    try {
+      const { default: launchDashboard } = await import('./dashboard.js');
+      await launchDashboard();
+    } catch (err) {
+      console.error('[ERROR] Could not launch dashboard:', err.message);
+      console.error('Make sure dependencies are installed (npm install) and Node >= 22 is in use.');
+      process.exit(1);
+    }
     return;
   }
 

@@ -15,7 +15,7 @@ Complex tasks print a ready-to-paste prompt for your Claude Code session. Simple
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) 18+
+- [Node.js](https://nodejs.org) 22+
 - [Ollama](https://ollama.com) running locally (`ollama serve`)
 - A model pulled, e.g. `ollama pull mistral`
 

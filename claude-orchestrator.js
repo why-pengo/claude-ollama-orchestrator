@@ -1,6 +1,12 @@
 // claude-orchestrator.js
 
-const TaskRouter = require('./ollama-router');
+import fs from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import TaskRouter from './ollama-router.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LOG_FILE = join(__dirname, 'orchestrator.log');
 
 class ClaudeOrchestrator {
   constructor(skills = {}, rules = {}) {
@@ -12,7 +18,7 @@ class ClaudeOrchestrator {
 
   applySkills(prompt) {
     let out = prompt;
-    let applied = [];
+    const applied = [];
     for (const [keyword, skillPrompt] of Object.entries(this.skills)) {
       if (prompt.toLowerCase().includes(keyword)) {
         out = `${skillPrompt}\n\nRequest: ${out}`;
@@ -20,10 +26,9 @@ class ClaudeOrchestrator {
       }
     }
     if (applied.length) {
-      const fs = require('fs');
       const line = `[${new Date().toISOString()}] [SKILLS] Applied: ${applied.join(', ')}`;
       console.log(line);
-      fs.appendFileSync(require('path').join(__dirname, 'orchestrator.log'), line + '\n');
+      fs.appendFileSync(LOG_FILE, line + '\n');
     }
     return out;
   }
@@ -46,12 +51,10 @@ class ClaudeOrchestrator {
   }
 
   async process(userRequest, forceComplexity = null) {
-    const fs = require('fs');
-    const path = require('path');
     const line = `[${new Date().toISOString()}] [REQUEST] ${userRequest.slice(0, 120)}${userRequest.length > 120 ? '…' : ''}`;
     console.log('\n' + '='.repeat(60));
     console.log(line);
-    fs.appendFileSync(path.join(__dirname, 'orchestrator.log'), line + '\n');
+    fs.appendFileSync(LOG_FILE, line + '\n');
 
     let prompt = this.applySkills(userRequest);
     prompt = this.enforceRules(prompt);
@@ -82,4 +85,4 @@ class ClaudeOrchestrator {
   }
 }
 
-module.exports = ClaudeOrchestrator;
+export default ClaudeOrchestrator;

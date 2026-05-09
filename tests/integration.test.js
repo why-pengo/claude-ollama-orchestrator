@@ -3,15 +3,17 @@
 // exit 0, correct output, no Ollama call, no log/stats writes.
 // Run with: node --test tests/integration.test.js
 
-const { describe, it, before } = require('node:test');
-const assert = require('node:assert/strict');
-const { spawnSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { describe, it, before } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.join(__dirname, '..');
-const INDEX = path.join(ROOT, 'index.js');
-const LOG_FILE = path.join(ROOT, 'orchestrator.log');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
+const INDEX = join(ROOT, 'index.js');
+const LOG_FILE = join(ROOT, 'orchestrator.log');
 
 function run(...args) {
   return spawnSync('node', [INDEX, ...args], { cwd: ROOT, encoding: 'utf8' });

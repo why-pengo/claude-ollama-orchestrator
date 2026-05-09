@@ -2,9 +2,9 @@
 // the correct keyword match or fallback reason for --dry-run output.
 // Run with: node --test tests/dryrun.test.js
 
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const TaskRouter = require('../ollama-router');
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import TaskRouter from '../ollama-router.js';
 
 const router = new TaskRouter();
 const assess = (p) => router.assessComplexityWithReason(p);

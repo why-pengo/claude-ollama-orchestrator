@@ -97,12 +97,14 @@ Examples:
     const stats = orchestrator.getStats();
     const ollama = stats.ollamaCalls;
     const refs = stats.claudeCodeReferrals;
+    const fallbacks = stats.ollamaFallbacks || 0;
     const total = ollama + refs;
     const pct = total ? Math.round((ollama / total) * 100) : 0;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
     console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
     console.log(`Claude Code refers : ${refs}  (${100 - pct}% of total)`);
+    console.log(`Ollama fallbacks   : ${fallbacks}  (offline / timeout / error)`);
     console.log(`Total requests     : ${total}`);
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();

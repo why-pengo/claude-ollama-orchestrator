@@ -18,7 +18,7 @@ function loadStats() {
   try {
     return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
   } catch {
-    return { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
+    return { ollamaCalls: 0, claudeCodeReferrals: 0, ollamaFallbacks: 0, routes: [] };
   }
 }
 
@@ -33,17 +33,69 @@ class TaskRouter {
     this.stats = loadStats();
   }
 
+  // ── Ollama failure handler ────────────────────────────────────────────────────
+  _ollamaFallback(prompt, label, reason, retryHint) {
+    log(label, reason);
+    this.stats.ollamaFallbacks = (this.stats.ollamaFallbacks || 0) + 1;
+    this.stats.routes.push({ ts: new Date().toISOString(), route: 'ollama-fallback', label, ms: 0 });
+    saveStats(this.stats);
+
+    const text =
+      `[${label}] ${reason}\n\n` +
+      `Options:\n` +
+      `  1. ${retryHint}\n` +
+      `  2. Use Claude Code instead — copy this prompt:\n\n` +
+      `---\n${prompt}\n---`;
+
+    return { source: 'ollama-fallback', label, reason, model: 'n/a', text };
+  }
+
   // ── Local Ollama ─────────────────────────────────────────────────────────────
   async callOllama(prompt) {
     const t0 = Date.now();
     log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel} (streaming)`);
 
-    const res = await fetch(`${this.ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
-    });
-    if (!res.ok) throw new Error(`Ollama error: ${res.statusText}`);
+    let res;
+    try {
+      res = await fetch(`${this.ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
+      });
+    } catch (err) {
+      const code = err.cause?.code;
+      if (code === 'ECONNREFUSED') {
+        return this._ollamaFallback(
+          prompt,
+          'OLLAMA-DOWN',
+          'Ollama is not running (connection refused).',
+          'Start Ollama (`ollama serve`) and re-run your command',
+        );
+      }
+      if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
+        return this._ollamaFallback(
+          prompt,
+          'OLLAMA-TIMEOUT',
+          'Ollama timed out (no response).',
+          'Check Ollama is responding (`ollama list`) and re-run your command',
+        );
+      }
+      return this._ollamaFallback(
+        prompt,
+        'OLLAMA-ERROR',
+        `Ollama fetch failed: ${err.message}`,
+        `Check Ollama is running and re-run your command`,
+      );
+    }
+
+    if (!res.ok) {
+      return this._ollamaFallback(
+        prompt,
+        'OLLAMA-ERROR',
+        `Ollama returned ${res.status}: ${res.statusText}`,
+        `Check OLLAMA_MODEL env var (currently: ${this.ollamaModel}) and re-run your command`,
+      );
+    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -152,7 +204,7 @@ class TaskRouter {
     return { ...this.stats };
   }
   resetStats() {
-    this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
+    this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, ollamaFallbacks: 0, routes: [] };
     saveStats(this.stats);
   }
 }

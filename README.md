@@ -67,11 +67,11 @@ make reset   # reset stats
 
 ## Environment variables
 
-| Variable           | Default    | Description                                                                             |
-| ------------------ | ---------- | --------------------------------------------------------------------------------------- |
-| `OLLAMA_MODEL`     | `mistral`  | Model to use for simple tasks                                                           |
-| `OLLAMA_PORT`      | `11434`    | Port Ollama listens on (used by the dashboard health check)                             |
-| `OLLAMA_ORCH_PATH` | —          | Full path to `index.js` — set in your shell profile for portable CLAUDE.md instructions |
+| Variable           | Default   | Description                                                                             |
+| ------------------ | --------- | --------------------------------------------------------------------------------------- |
+| `OLLAMA_MODEL`     | `mistral` | Model to use for simple tasks                                                           |
+| `OLLAMA_PORT`      | `11434`   | Port Ollama listens on (used by the dashboard health check)                             |
+| `OLLAMA_ORCH_PATH` | —         | Full path to `index.js` — set in your shell profile for portable CLAUDE.md instructions |
 
 Example shell profile entry:
 

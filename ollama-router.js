@@ -35,26 +35,52 @@ class TaskRouter {
 
   // ── Local Ollama ─────────────────────────────────────────────────────────────
   async callOllama(prompt) {
-    const t0  = Date.now();
-    log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel}`);
+    const t0 = Date.now();
+    log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel} (streaming)`);
 
     const res = await fetch(`${this.ollamaUrl}/api/generate`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model: this.ollamaModel, prompt, stream: false }),
+      body:    JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
     });
     if (!res.ok) throw new Error(`Ollama error: ${res.statusText}`);
 
-    const data    = await res.json();
-    const elapsed = Date.now() - t0;
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer       = '';
+    let fullResponse = '';
 
-    log('OLLAMA', `Done in ${elapsed}ms — response ${data.response?.length ?? 0} chars`);
+    process.stdout.write('\n');
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // hold incomplete trailing line
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const chunk = JSON.parse(line);
+        if (chunk.response) {
+          process.stdout.write(chunk.response);
+          fullResponse += chunk.response;
+        }
+        if (chunk.done) break outer;
+      }
+    }
+
+    process.stdout.write('\n');
+
+    const elapsed = Date.now() - t0;
+    log('OLLAMA', `Done in ${elapsed}ms — ${fullResponse.length} chars`);
 
     this.stats.ollamaCalls++;
     this.stats.routes.push({ ts: new Date().toISOString(), route: 'ollama', model: this.ollamaModel, ms: elapsed });
     saveStats(this.stats);
 
-    return { source: 'ollama', model: this.ollamaModel, text: data.response };
+    return { source: 'ollama', model: this.ollamaModel, text: fullResponse, streamed: true };
   }
 
   // ── Claude Code referral ─────────────────────────────────────────────────────

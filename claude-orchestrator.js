@@ -49,11 +49,13 @@ class ClaudeOrchestrator {
 
     this.history.push({ request: userRequest, result, ts: new Date() });
 
-    console.log('\n' + '-'.repeat(60));
-    console.log(`SOURCE : ${result.source.toUpperCase()}  (${result.model})`);
-    if (result.cost) console.log(`COST   : $${result.cost.toFixed(4)}`);
-    console.log('-'.repeat(60));
-    console.log(result.text);
+    if (!result.streamed) {
+      console.log('\n' + '-'.repeat(60));
+      console.log(`SOURCE : ${result.source.toUpperCase()}  (${result.model})`);
+      if (result.cost) console.log(`COST   : $${result.cost.toFixed(4)}`);
+      console.log('-'.repeat(60));
+      console.log(result.text);
+    }
     console.log('='.repeat(60) + '\n');
 
     return result;

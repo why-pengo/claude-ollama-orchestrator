@@ -24,6 +24,21 @@ separate API account means separate billing on top of your subscription.
 This setup keeps it simple: Ollama handles the mechanical work for free,
 and Claude Code (which you already have open) handles the rest.
 
+### Three categories — pick the right tool
+
+A common mistake is sending deterministic tool operations to Ollama. There
+are three distinct categories:
+
+| Category | Examples | Right tool |
+|---|---|---|
+| Deterministic tool ops | Format Python, lint, run tests, migrate DB | CLI directly (`make format`, `black`, etc.) |
+| Generative simple tasks | Extract values, convert formats, summarise content | Ollama orchestrator |
+| Generative complex tasks | Debug, design, refactor, security review | Claude Code directly |
+
+**Ollama is for generative output** — tasks where a language model produces
+the answer. It cannot run `black` or `isort`; it can only generate text.
+If a task has a deterministic CLI tool that does the job, use the tool.
+
 ### Routing Reference
 
 | Task Type                    | Backend      | Example                        |
@@ -540,6 +555,36 @@ Run a throwaway warm-up request if latency matters on the first real task.
 
 ---
 
+## Using with Claude Code (via CLAUDE.md)
+
+You can instruct Claude Code to route tasks automatically by adding a
+routing section to your project's `.claude/CLAUDE.md`. Claude Code will
+read the file, pass content inline, and call the orchestrator via Bash.
+
+```markdown
+## Task routing — Ollama for generative simple tasks
+
+For generative simple tasks, offload to the local Ollama orchestrator:
+
+    node /path/to/claude_with_local_llm/index.js --simple "<prompt with content inline>"
+
+| Category | Examples | Tool |
+|---|---|---|
+| Deterministic tool ops | Format Python, lint, run tests | CLI directly |
+| Generative simple tasks | Extract values, convert formats, summarise | Ollama orchestrator |
+| Generative complex tasks | Debug, design, refactor, security | Claude Code directly |
+
+When reading files to pass to Ollama, pipe the content inline:
+
+    node /path/to/index.js --simple "Extract all route paths from: $(cat routers/bp.py)"
+```
+
+**Important:** never send deterministic tool operations (formatting, linting,
+migrations) to Ollama — use the CLI tools directly. Ollama is only for
+tasks where a language model generates the output.
+
+---
+
 ## Tips
 
 **Do**
@@ -547,12 +592,14 @@ Run a throwaway warm-up request if latency matters on the first real task.
 - Use `--simple` / `--complex` flags until you trust auto-routing
 - Gradually expand the keyword lists based on real misroutes you observe
 - Use `--stats` to track how often you're hitting Ollama vs Claude Code
+- Set `OLLAMA_MODEL` in every session that will call the orchestrator
 
 **Don't**
 - Use a 20GB+ model as your default for simple tasks — pick the smallest
   model that gives acceptable quality
 - Route sensitive data through Ollama if your machine could be compromised
 - Forget that `ollama serve` must be running before invoking the script
+- Send `black`/`isort`/`flake8` tasks to Ollama — run the CLI tools directly
 
 ---
 

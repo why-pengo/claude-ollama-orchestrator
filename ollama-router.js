@@ -37,7 +37,12 @@ class TaskRouter {
   _ollamaFallback(prompt, label, reason, retryHint) {
     log(label, reason);
     this.stats.ollamaFallbacks = (this.stats.ollamaFallbacks || 0) + 1;
-    this.stats.routes.push({ ts: new Date().toISOString(), route: 'ollama-fallback', label, ms: 0 });
+    this.stats.routes.push({
+      ts: new Date().toISOString(),
+      route: 'ollama-fallback',
+      label,
+      ms: 0,
+    });
     saveStats(this.stats);
 
     const text =

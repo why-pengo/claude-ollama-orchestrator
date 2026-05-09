@@ -1,9 +1,9 @@
 // Tests for parseArgs() — all flag combinations.
 // Run with: node --test tests/args.test.js
 
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const { parseArgs } = require('../index');
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { parseArgs } from '../index.js';
 
 describe('parseArgs — force flags', () => {
   it('--simple sets force', () =>

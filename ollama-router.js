@@ -2,11 +2,13 @@
 // Requires Node.js 18+ (native fetch — no npm install needed)
 // Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const STATS_FILE = path.join(__dirname, 'orchestrator-stats.json');
-const LOG_FILE = path.join(__dirname, 'orchestrator.log');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
+const LOG_FILE = join(__dirname, 'orchestrator.log');
 
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
@@ -228,10 +230,11 @@ class TaskRouter {
   getStats() {
     return { ...this.stats };
   }
+
   resetStats() {
     this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, ollamaFallbacks: 0, routes: [] };
     saveStats(this.stats);
   }
 }
 
-module.exports = TaskRouter;
+export default TaskRouter;

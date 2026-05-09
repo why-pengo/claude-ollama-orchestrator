@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // index.js
 
-const fs = require('fs');
-const path = require('path');
-const ClaudeOrchestrator = require('./claude-orchestrator');
+import fs from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ClaudeOrchestrator from './claude-orchestrator.js';
 
 const mySkills = {
   'code-review': `You are an expert code reviewer.
@@ -27,7 +28,7 @@ const myRules = {
 
 const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
 
-function parseArgs(rawArgs) {
+export function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
   let force = null;
   let filePath = null;
@@ -149,7 +150,7 @@ Examples:
   let fileContentLength = 0;
 
   if (filePath) {
-    const resolved = path.resolve(filePath);
+    const resolved = resolve(filePath);
     if (!fs.existsSync(resolved)) {
       console.error(`[ERROR] File not found: ${resolved}`);
       process.exit(1);
@@ -191,8 +192,6 @@ Examples:
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }
-
-module.exports = { parseArgs };

@@ -3,10 +3,10 @@
 // Stubs fs I/O so tests leave no log or stats files behind.
 // Run with: node --test tests/fallback.test.js
 
-const { describe, it, beforeEach, afterEach, mock } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('fs');
-const TaskRouter = require('../ollama-router');
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import TaskRouter from '../ollama-router.js';
 
 function stubFs() {
   mock.method(fs, 'appendFileSync', () => {});

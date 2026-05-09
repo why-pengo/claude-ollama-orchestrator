@@ -1,9 +1,9 @@
 // Tests for assessComplexity() — the 9/9 live-tested routing matrix plus edge cases.
 // Run with: node --test tests/routing.test.js
 
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const TaskRouter = require('../ollama-router');
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import TaskRouter from '../ollama-router.js';
 
 const router = new TaskRouter();
 const assess = (p) => router.assessComplexity(p);

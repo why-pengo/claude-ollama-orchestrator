@@ -629,28 +629,45 @@ Run a throwaway warm-up request if latency matters on the first real task.
 
 You can instruct Claude Code to route tasks automatically by adding a
 routing section to your project's `.claude/CLAUDE.md`. Claude Code will
-read the file, pass content inline, and call the orchestrator via Bash.
+read the file, pass content via `--file`, and call the orchestrator via Bash.
+
+### What to expect in practice
+
+Tested on a real FastAPI + Vue project (health_track). Observed behaviour:
+
+- **"Format all Python files"** — Claude Code self-corrected. It tried Ollama,
+  got back an unhelpful response (Ollama can't run `black`), then pivoted to
+  `make format` directly. The CLAUDE.md instruction was updated to explicitly
+  exclude deterministic tool ops.
+- **"Extract all API routes from bp.py"** — Claude Code read the file, called
+  `${OLLAMA_ORCH_PATH} --simple --file bp.py "Extract all route paths"`,
+  mistral returned a correct formatted table of 6 routes in ~19s.
+
+### CLAUDE.md template
 
 ```markdown
 ## Task routing — Ollama for generative simple tasks
 
 Setup: set OLLAMA_ORCH_PATH in your shell profile:
-  export OLLAMA_ORCH_PATH=/path/to/claude_with_local_llm/index.js
+  export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
 
 | Category | Examples | Tool |
 |---|---|---|
-| Deterministic tool ops | Format Python, lint, run tests | CLI directly |
+| Deterministic tool ops | Format Python, lint, run tests | CLI directly (`make format`, etc.) |
 | Generative simple tasks | Extract values, convert formats, summarise | Ollama orchestrator |
 | Generative complex tasks | Debug, design, refactor, security | Claude Code directly |
 
+Never send to Ollama: make format, make lint, make test, make migrate —
+these are deterministic CLI operations, not generative tasks.
+
 Use --file to pass file content safely (avoids shell substitution and ARG_MAX limits):
-  ${OLLAMA_ORCH_PATH} --simple --file routers/bp.py "Extract all API route paths"
-  ${OLLAMA_ORCH_PATH} --simple --file models/bp.py "Summarise what this module does"
+  ${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Extract all route paths"
+  ${OLLAMA_ORCH_PATH} --simple --file path/to/file.py "Summarise what this module does"
 ```
 
-**Important:** never send deterministic tool operations (formatting, linting,
-migrations) to Ollama — use the CLI tools directly. Ollama is only for
-tasks where a language model generates the output.
+**Important:** Claude Code will follow the instruction for clear-cut cases but
+may self-correct when it recognises a better tool exists. This is good behaviour
+— treat it as a signal to tighten the CLAUDE.md examples.
 
 ---
 

@@ -76,8 +76,10 @@ async function main() {
     console.log(`
 Ollama Orchestrator (Claude Code edition)
 -----------------------------------------
-Simple tasks  → handled by local Ollama (free)
-Complex tasks → flagged for your Claude Code session
+Routing tiers:
+  Simple  → local Ollama (OLLAMA_MODEL, default: mistral)
+  Medium  → remote Ollama (OLLAMA_REMOTE_HOST + OLLAMA_REMOTE_MODEL)
+  Complex → Claude Code session
 
 Usage:
   node index.js "Your request"
@@ -91,7 +93,7 @@ Force routing:
   node index.js --complex "Design a microservice ..."
 
 Preview routing without executing:
-  node index.js --dry-run "clean up and organise this file"
+  node index.js --dry-run "debug this function"
   node index.js --dry-run --file src/models.py "Extract all class names"
 
 Pass a file without shell substitution (avoids newline collapsing and ARG_MAX limits):
@@ -99,8 +101,11 @@ Pass a file without shell substitution (avoids newline collapsing and ARG_MAX li
   node index.js --file src/models.py "Summarise what this module does"
 
 Env vars:
-  OLLAMA_MODEL      default: mistral
-  OLLAMA_ORCH_PATH  set this in your shell profile so CLAUDE.md instructions are portable
+  OLLAMA_MODEL         default: mistral        (local simple-task model)
+  OLLAMA_REMOTE_HOST   e.g. http://192.168.x.x:11434  (enables medium tier)
+  OLLAMA_REMOTE_MODEL  default: qwen2.5:32b    (remote medium-task model)
+  OLLAMA_PORT          default: 11434
+  OLLAMA_ORCH_PATH     set in your shell profile for portable CLAUDE.md instructions
 
 Examples:
   node index.js "Format this JSON: {name:'alice'}"
@@ -124,27 +129,31 @@ Examples:
 
   if (args[0] === '--stats') {
     const stats = orchestrator.getStats();
-    const ollama = stats.ollamaCalls;
-    const refs = stats.claudeCodeReferrals;
+    const simple = stats.simpleCalls || 0;
+    const medium = stats.mediumCalls || 0;
+    const refs = stats.claudeCodeReferrals || 0;
     const fallbacks = stats.ollamaFallbacks || 0;
-    const total = ollama + refs + fallbacks;
-    const ollamaPct = total ? Math.round((ollama / total) * 100) : 0;
+    const total = simple + medium + refs + fallbacks;
+    const simplePct = total ? Math.round((simple / total) * 100) : 0;
+    const mediumPct = total ? Math.round((medium / total) * 100) : 0;
     const refsPct = total ? Math.round((refs / total) * 100) : 0;
     const fallbackRoutes = (stats.routes || []).filter((r) => r.route === 'ollama-fallback');
     const byLabel = fallbackRoutes.reduce((acc, r) => {
       acc[r.label] = (acc[r.label] || 0) + 1;
       return acc;
     }, {});
-    const fbDetail = `down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / error=${byLabel['OLLAMA-ERROR'] || 0}`;
+    const fbLocal = `down=${byLabel['OLLAMA-DOWN'] || 0}/timeout=${byLabel['OLLAMA-TIMEOUT'] || 0}/err=${byLabel['OLLAMA-ERROR'] || 0}`;
+    const fbRemote = `down=${byLabel['OLLAMA-REMOTE-DOWN'] || 0}/timeout=${byLabel['OLLAMA-REMOTE-TIMEOUT'] || 0}/err=${byLabel['OLLAMA-REMOTE-ERROR'] || 0}`;
     const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
       stats.totalOffloadedChars || 0,
     );
 
     console.log('\nOrchestrator Stats');
     console.log('------------------');
-    console.log(`Ollama calls       : ${ollama}  (${ollamaPct}% of total — free)`);
+    console.log(`Simple calls       : ${simple}  (${simplePct}% of total — local, free)`);
+    console.log(`Medium calls       : ${medium}  (${mediumPct}% of total — remote, free)`);
     console.log(`Claude Code refers : ${refs}  (${refsPct}% of total)`);
-    console.log(`Ollama fallbacks   : ${fallbacks}  (${fbDetail})`);
+    console.log(`Ollama fallbacks   : ${fallbacks}  (local: ${fbLocal} | remote: ${fbRemote})`);
     console.log(`Total requests     : ${total}`);
     console.log(`Offloaded tokens   : ${estimatedTokens.toLocaleString()}`);
     console.log(
@@ -154,7 +163,7 @@ Examples:
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');
       last5.forEach((r) =>
-        console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`),
+        console.log(`  ${r.ts}  ${r.route.padEnd(14)}  ${r.ms != null ? r.ms + 'ms' : ''}`),
       );
     }
     return;
@@ -197,7 +206,19 @@ Examples:
       const routingPrompt = orchestrator.computeRoutingPrompt(prompt);
       ({ complexity, reason } = orchestrator.router.assessComplexityWithReason(routingPrompt));
     }
-    console.log(`\n[DRY-RUN] Route: ${complexity}  ${reason}`);
+    const { ollamaUrl, ollamaModel, remoteUrl, remoteModel } = orchestrator.router;
+    let destination;
+    if (complexity === 'simple') {
+      destination = `local Ollama  (${ollamaUrl} · ${ollamaModel})`;
+    } else if (complexity === 'medium') {
+      destination = remoteUrl
+        ? `remote Ollama  (${remoteUrl} · ${remoteModel})`
+        : `Claude Code  (no OLLAMA_REMOTE_HOST configured)`;
+    } else {
+      destination = 'Claude Code';
+    }
+    console.log(`\n[DRY-RUN] Route: ${complexity}  →  ${destination}`);
+    console.log(`          Reason: ${reason}`);
     if (filePath) console.log(`File    : ${filePath} (${fileContentLength} chars)`);
     const instructionText = promptText || '(file content only)';
     const preview =

@@ -17,11 +17,13 @@ const OLLAMA_URL = `http://localhost:${process.env.OLLAMA_PORT || 11434}`;
 // ── Stats panel ───────────────────────────────────────────────────────────────
 function StatsPanel({ stats, ollamaOnline, width }) {
   const model = process.env.OLLAMA_MODEL || 'mistral';
-  const ollama = stats?.ollamaCalls ?? 0;
+  const simple = stats?.simpleCalls ?? 0;
+  const medium = stats?.mediumCalls ?? 0;
   const refs = stats?.claudeCodeReferrals ?? 0;
   const fallbacks = stats?.ollamaFallbacks ?? 0;
-  const total = ollama + refs + fallbacks;
-  const ollamaPct = total ? Math.round((ollama / total) * 100) : 0;
+  const total = simple + medium + refs + fallbacks;
+  const simplePct = total ? Math.round((simple / total) * 100) : 0;
+  const mediumPct = total ? Math.round((medium / total) * 100) : 0;
   const refsPct = total ? Math.round((refs / total) * 100) : 0;
   const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
     stats?.totalOffloadedChars ?? 0,
@@ -54,13 +56,19 @@ function StatsPanel({ stats, ollamaOnline, width }) {
     h(Text, null, `Model  : ${model}`),
     h(Text, null, 'Ollama : ', h(Text, { color: dotColor }, dotChar), ` ${statusLabel}`),
     h(Text, null, ''),
-    h(Text, null, `Ollama calls  :${String(ollama).padStart(5)}  (${ollamaPct}%)`),
+    h(Text, null, `Simple calls  :${String(simple).padStart(5)}  (${simplePct}%)`),
+    h(Text, null, `Medium calls  :${String(medium).padStart(5)}  (${mediumPct}%)`),
     h(Text, null, `Claude refers :${String(refs).padStart(5)}  (${refsPct}%)`),
     h(Text, null, `Fallbacks     :${String(fallbacks).padStart(5)}`),
     h(
       Text,
       { dimColor: true },
-      `  ↳ down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / err=${byLabel['OLLAMA-ERROR'] || 0}`,
+      `  ↳ local  d=${byLabel['OLLAMA-DOWN'] || 0}/t=${byLabel['OLLAMA-TIMEOUT'] || 0}/e=${byLabel['OLLAMA-ERROR'] || 0}`,
+    ),
+    h(
+      Text,
+      { dimColor: true },
+      `  ↳ remote d=${byLabel['OLLAMA-REMOTE-DOWN'] || 0}/t=${byLabel['OLLAMA-REMOTE-TIMEOUT'] || 0}/e=${byLabel['OLLAMA-REMOTE-ERROR'] || 0}`,
     ),
     h(Text, null, `Total         :${String(total).padStart(5)}`),
     h(Text, null, `Offloaded tkns: ${estimatedTokens.toLocaleString()}`),
@@ -103,7 +111,9 @@ function LogPanel({ lines, maxLineLen }) {
           const tag = tagMatch?.[0]?.slice(1, -1) || '';
           let color = 'white';
           if (tag === 'OLLAMA-DOWN' || tag === 'OLLAMA-ERROR') color = 'red';
-          else if (tag === 'OLLAMA-TIMEOUT') color = 'yellow';
+          else if (tag === 'OLLAMA-REMOTE-DOWN' || tag === 'OLLAMA-REMOTE-ERROR') color = 'red';
+          else if (tag === 'OLLAMA-TIMEOUT' || tag === 'OLLAMA-REMOTE-TIMEOUT') color = 'yellow';
+          else if (tag === 'OLLAMA-REMOTE') color = 'magenta';
           else if (tag === 'OLLAMA') color = 'green';
           else if (tag === 'ROUTER') color = 'blue';
           else if (tag === 'REQUEST') color = 'cyan';

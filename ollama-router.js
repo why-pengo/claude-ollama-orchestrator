@@ -1,6 +1,6 @@
 // ollama-router.js
-// Requires Node.js 18+ (native fetch — no npm install needed)
-// Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
+// Requires Node.js 22+ (native fetch, AbortSignal.any)
+// Routes tasks across three tiers: local Ollama → remote Ollama → Claude Code.
 
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -16,17 +16,26 @@ function log(tag, message) {
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
+const STAT_DEFAULTS = {
+  simpleCalls: 0,
+  mediumCalls: 0,
+  claudeCodeReferrals: 0,
+  ollamaFallbacks: 0,
+  totalOffloadedChars: 0,
+  routes: [],
+};
+
 function loadStats() {
   try {
-    return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    const data = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    // migrate ollamaCalls → simpleCalls
+    if ('ollamaCalls' in data && !('simpleCalls' in data)) {
+      data.simpleCalls = data.ollamaCalls;
+      delete data.ollamaCalls;
+    }
+    return { ...STAT_DEFAULTS, ...data };
   } catch {
-    return {
-      ollamaCalls: 0,
-      claudeCodeReferrals: 0,
-      ollamaFallbacks: 0,
-      totalOffloadedChars: 0,
-      routes: [],
-    };
+    return { ...STAT_DEFAULTS };
   }
 }
 
@@ -35,9 +44,11 @@ function saveStats(stats) {
 }
 
 class TaskRouter {
-  constructor(ollamaUrl = 'http://localhost:11434') {
+  constructor(ollamaUrl = `http://localhost:${process.env.OLLAMA_PORT || 11434}`) {
     this.ollamaUrl = ollamaUrl;
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
+    this.remoteUrl = process.env.OLLAMA_REMOTE_HOST || null;
+    this.remoteModel = process.env.OLLAMA_REMOTE_MODEL || 'qwen2.5:32b';
     this.stats = loadStats();
   }
 
@@ -63,17 +74,25 @@ class TaskRouter {
     return { source: 'ollama-fallback', label, reason, model: 'n/a', text };
   }
 
-  // ── Local Ollama ─────────────────────────────────────────────────────────────
-  async callOllama(prompt) {
+  // ── Generic Ollama streaming call ─────────────────────────────────────────────
+  async _callOllamaEndpoint(prompt, url, model, tier) {
+    const logTag = tier === 'medium' ? 'OLLAMA-REMOTE' : 'OLLAMA';
+    const statField = tier === 'medium' ? 'mediumCalls' : 'simpleCalls';
+    const routeLabel = tier === 'medium' ? 'ollama-remote' : 'ollama';
+    const downLabel = `${logTag}-DOWN`;
+    const timeoutLabel = `${logTag}-TIMEOUT`;
+    const errorLabel = `${logTag}-ERROR`;
+    const nodeDesc = tier === 'medium' ? `remote (${url})` : `local (${url})`;
+
     const t0 = Date.now();
-    log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel} (streaming)`);
+    log(logTag, `Sending ${prompt.length} chars to ${model} at ${url} (streaming)`);
 
     let res;
     try {
-      res = await fetch(`${this.ollamaUrl}/api/generate`, {
+      res = await fetch(`${url}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
+        body: JSON.stringify({ model, prompt, stream: true }),
       });
     } catch (err) {
       const elapsed = Date.now() - t0;
@@ -81,26 +100,26 @@ class TaskRouter {
       if (code === 'ECONNREFUSED') {
         return this._ollamaFallback(
           prompt,
-          'OLLAMA-DOWN',
-          'Ollama is not running (connection refused).',
-          'Start Ollama (`ollama serve`) and re-run your command',
+          downLabel,
+          `Ollama ${nodeDesc} is not running (connection refused).`,
+          `Start Ollama on ${url} and re-run your command`,
           elapsed,
         );
       }
       if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
         return this._ollamaFallback(
           prompt,
-          'OLLAMA-TIMEOUT',
-          'Ollama timed out (no response).',
-          'Check Ollama is responding (`ollama list`) and re-run your command',
+          timeoutLabel,
+          `Ollama ${nodeDesc} timed out (no response).`,
+          `Check Ollama is responding on ${url} and re-run your command`,
           elapsed,
         );
       }
       return this._ollamaFallback(
         prompt,
-        'OLLAMA-ERROR',
-        `Ollama fetch failed: ${err.message}`,
-        `Check Ollama is running and re-run your command`,
+        errorLabel,
+        `Ollama ${nodeDesc} fetch failed: ${err.message}`,
+        `Check Ollama is running on ${url} and re-run your command`,
         elapsed,
       );
     }
@@ -108,9 +127,9 @@ class TaskRouter {
     if (!res.ok) {
       return this._ollamaFallback(
         prompt,
-        'OLLAMA-ERROR',
-        `Ollama returned ${res.status}: ${res.statusText}`,
-        `Check OLLAMA_MODEL env var (currently: ${this.ollamaModel}) and re-run your command`,
+        errorLabel,
+        `Ollama ${nodeDesc} returned ${res.status}: ${res.statusText}`,
+        `Check OLLAMA_MODEL / OLLAMA_REMOTE_MODEL env var and re-run your command`,
         Date.now() - t0,
       );
     }
@@ -128,7 +147,7 @@ class TaskRouter {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // hold incomplete trailing line
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -144,24 +163,33 @@ class TaskRouter {
     process.stdout.write('\n');
 
     const elapsed = Date.now() - t0;
-    log('OLLAMA', `Done in ${elapsed}ms — ${fullResponse.length} chars`);
+    log(logTag, `Done in ${elapsed}ms — ${fullResponse.length} chars`);
 
-    this.stats.ollamaCalls++;
+    this.stats[statField] = (this.stats[statField] || 0) + 1;
     this.stats.totalOffloadedChars = (this.stats.totalOffloadedChars || 0) + prompt.length;
     this.stats.routes.push({
       ts: new Date().toISOString(),
-      route: 'ollama',
-      model: this.ollamaModel,
+      route: routeLabel,
+      model,
       ms: elapsed,
     });
     saveStats(this.stats);
 
-    return { source: 'ollama', model: this.ollamaModel, text: fullResponse, streamed: true };
+    return { source: routeLabel, model, text: fullResponse, streamed: true };
+  }
+
+  // ── Public Ollama callers ─────────────────────────────────────────────────────
+  callOllama(prompt) {
+    return this._callOllamaEndpoint(prompt, this.ollamaUrl, this.ollamaModel, 'simple');
+  }
+
+  callRemoteOllama(prompt) {
+    return this._callOllamaEndpoint(prompt, this.remoteUrl, this.remoteModel, 'medium');
   }
 
   // ── Claude Code referral ─────────────────────────────────────────────────────
   referToClaudeCode(prompt) {
-    log('ROUTER', 'Complex task — referring to Claude Code');
+    log('ROUTER', 'Referring to Claude Code');
     this.stats.claudeCodeReferrals++;
     this.stats.routes.push({ ts: new Date().toISOString(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);
@@ -172,8 +200,7 @@ class TaskRouter {
     };
   }
 
-  // ── Complexity assessment ────────────────────────────────────────────────────
-  // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
+  // ── Complexity assessment ─────────────────────────────────────────────────────
   assessComplexityWithReason(prompt) {
     const simple = [
       'format',
@@ -187,36 +214,41 @@ class TaskRouter {
       'rename',
       'sort',
     ];
-    const complex = [
+    const medium = [
+      'debug',
+      'explain',
+      'refactor',
       'design',
-      'architect',
+      'implement',
+      'reason',
       'optimise',
       'optimize',
-      'debug',
-      'reason',
-      'plan',
-      'refactor',
-      'security',
-      'tradeoff',
-      'implement',
-      'explain',
-      'clean',
     ];
+    const complex = ['architect', 'security', 'tradeoff', 'plan', 'clean'];
+
     const lower = prompt.toLowerCase();
 
     const complexMatch = complex.find((kw) => lower.includes(kw));
-    if (complexMatch)
+    if (complexMatch) {
       return { complexity: 'complex', reason: `matched keyword "${complexMatch}" (complex list)` };
+    }
+
+    const mediumMatch = medium.find((kw) => lower.includes(kw));
+    if (mediumMatch) {
+      return { complexity: 'medium', reason: `matched keyword "${mediumMatch}" (medium list)` };
+    }
 
     const simpleMatch = simple.find((kw) => lower.includes(kw));
-    if (simpleMatch)
+    if (simpleMatch) {
       return { complexity: 'simple', reason: `matched keyword "${simpleMatch}" (simple list)` };
+    }
 
-    if (prompt.length > 500)
+    if (prompt.length > 500) {
       return {
         complexity: 'complex',
         reason: `prompt length ${prompt.length} > 500 chars (length fallback)`,
       };
+    }
     return { complexity: 'simple', reason: `no keywords matched, length ≤ 500 (length fallback)` };
   }
 
@@ -224,12 +256,33 @@ class TaskRouter {
     return this.assessComplexityWithReason(prompt).complexity;
   }
 
-  // ── Main router ──────────────────────────────────────────────────────────────
+  // ── Three-tier router with cascade fallback ──────────────────────────────────
   async route(prompt, forceComplexity = null) {
     const complexity = forceComplexity ?? this.assessComplexity(prompt);
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
-    if (complexity === 'simple') return this.callOllama(prompt);
+    if (complexity === 'simple') {
+      const result = await this.callOllama(prompt);
+      if (result.source !== 'ollama-fallback') return result;
+      if (this.remoteUrl) {
+        log('ROUTER', 'Local node offline — cascading to remote');
+        const remoteResult = await this.callRemoteOllama(prompt);
+        if (remoteResult.source !== 'ollama-fallback') return remoteResult;
+        log('ROUTER', 'Remote node also offline — cascading to Claude Code');
+      } else {
+        log('ROUTER', 'Local node offline, no remote configured — cascading to Claude Code');
+      }
+      return this.referToClaudeCode(prompt);
+    }
+
+    if (complexity === 'medium') {
+      if (!this.remoteUrl) return this.referToClaudeCode(prompt);
+      const result = await this.callRemoteOllama(prompt);
+      if (result.source !== 'ollama-fallback') return result;
+      log('ROUTER', 'Remote node offline — cascading to Claude Code');
+      return this.referToClaudeCode(prompt);
+    }
+
     if (complexity === 'complex') return this.referToClaudeCode(prompt);
     throw new Error(`Unknown complexity: ${complexity}`);
   }
@@ -239,13 +292,7 @@ class TaskRouter {
   }
 
   resetStats() {
-    this.stats = {
-      ollamaCalls: 0,
-      claudeCodeReferrals: 0,
-      ollamaFallbacks: 0,
-      totalOffloadedChars: 0,
-      routes: [],
-    };
+    this.stats = { ...STAT_DEFAULTS };
     saveStats(this.stats);
   }
 }

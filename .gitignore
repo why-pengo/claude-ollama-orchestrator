@@ -1,0 +1,13 @@
+# Runtime data — may contain prompt content and cost info
+orchestrator.log
+orchestrator-stats.json
+
+# Secrets
+.env
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/

@@ -1,11 +1,9 @@
 # Claude Code + Local Ollama Orchestration Guide
 
-Use Claude Code as an intelligent planner/manager that routes tasks between
-local Ollama (free) and the Claude API (high quality) to cut costs 50-70%
-while keeping your conversation-style workflow intact.
+Route simple/mechanical tasks to local Ollama (free, private) and flag
+complex tasks for your Claude Code session — no API key or extra billing needed.
 
-> **Last reviewed:** May 2026 — uses Node 18+, Ollama 0.x, `claude-sonnet-4-6`
-> **Updated:** May 2026 — fixed input-token cost tracking, persistent stats, per-call logging, env-var model config
+> **Last reviewed:** May 2026 — Node 18+, Ollama 0.x, tested on Apple M4 Pro
 
 ---
 
@@ -14,26 +12,29 @@ while keeping your conversation-style workflow intact.
 ```
 Your Request
     ↓
-Claude Code (Planner / Orchestrator)
-    ├── Simple task?  → Ollama  (local, free, fast)
-    ├── Complex task? → Claude API (paid, high quality)
-    └── Mixed task?   → Break into subtasks, route each part
-    ↓
-Final Output
+node index.js "..."
+    ├── Simple task?  → Ollama  (local, free, runs on your machine)
+    └── Complex task? → "Take this to Claude Code" message + prompt to paste
 ```
+
+### Why not route complex tasks to the Claude API?
+
+If you have **Claude Pro / Max**, you already have Claude via Claude Code. A
+separate API account means separate billing on top of your subscription.
+This setup keeps it simple: Ollama handles the mechanical work for free,
+and Claude Code (which you already have open) handles the rest.
 
 ### Routing Reference
 
-| Task Type                    | Backend    | Example                           |
-|------------------------------|------------|-----------------------------------|
-| Data formatting / cleanup    | Ollama     | Format JSON, clean CSV            |
-| Simple text transformations  | Ollama     | Convert markdown to HTML          |
-| Extract / parse / organise   | Ollama     | Pull emails from text             |
-| Write documentation drafts   | Ollama     | Basic README, comments            |
-| Complex code generation      | Claude API | Design a service, write algorithm |
-| Architecture / planning      | Claude API | System design, tradeoff analysis  |
-| Debugging / security review  | Claude API | Find bugs, audit for vulns        |
-| Synthesis / final output     | Claude API | Combine subtask results           |
+| Task Type                    | Backend      | Example                        |
+|------------------------------|--------------|--------------------------------|
+| Data formatting / cleanup    | Ollama       | Format JSON, clean CSV         |
+| Simple text transformations  | Ollama       | Convert markdown to HTML       |
+| Extract / parse / organise   | Ollama       | Pull emails from text          |
+| Write documentation drafts   | Ollama       | Basic README, comments         |
+| Complex code generation      | Claude Code  | Design a service, algorithm    |
+| Architecture / planning      | Claude Code  | System design, tradeoffs       |
+| Debugging / security review  | Claude Code  | Find bugs, audit for vulns     |
 
 ---
 
@@ -42,25 +43,36 @@ Final Output
 - **Claude Code** installed (`claude --version`)
 - **Ollama** installed and at least one model pulled
 - **Node.js 18+** — has native `fetch` built in, no extra packages needed
-- **Anthropic API key** exported as `ANTHROPIC_API_KEY`
+
+No API key required.
 
 ---
 
-## Step 1 — Test Ollama Connectivity
+## Step 1 — Choose and Pull an Ollama Model
+
+Model choice matters a lot for response time. Benchmarks on **Apple M4 Pro**:
+
+| Model         | Size  | Cold start | Warm      | Recommended for          |
+|---------------|-------|-----------|-----------|--------------------------|
+| `llama3.2:3b` | 2 GB  | ~5s       | < 1s      | Fastest, high-volume     |
+| `mistral`     | 4 GB  | ~20s      | ~3s       | Best balance (default)   |
+| `qwen3.6`     | 23 GB | ~30s      | ~10s      | High quality, slow       |
+
+> **Cold start** = first request after `ollama serve` (model loads into memory).
+> **Warm** = subsequent requests in the same session. Always test warm — that's
+> your real-world speed.
 
 ```bash
-# 1a. Start Ollama (keep this terminal open)
+# Start Ollama (keep this terminal open)
 ollama serve
 
-# 1b. Pull a model if you haven't already
-ollama pull mistral          # recommended: fast + good quality
-# ollama pull llama3         # more capable, slower
-# ollama pull tinyllama      # fastest, lower quality
+# Pull the recommended model
+ollama pull mistral
 
-# 1c. List available models
+# List what you have
 ollama list
 
-# 1d. Test a request
+# Quick connectivity test
 curl http://localhost:11434/api/generate \
   -d '{"model":"mistral","prompt":"Say hello","stream":false}'
 # Expected: JSON with a "response" field
@@ -70,11 +82,10 @@ curl http://localhost:11434/api/generate \
 
 ## Step 2 — Create `ollama-router.js`
 
-This module decides where each prompt goes and calls the right backend.
-
 ```javascript
 // ollama-router.js
 // Requires Node.js 18+ (native fetch — no npm install needed)
+// Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
 
 const fs   = require('fs');
 const path = require('path');
@@ -92,7 +103,7 @@ function loadStats() {
   try {
     return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
   } catch {
-    return { ollamaCalls: 0, claudeCalls: 0, totalCost: 0, routes: [] };
+    return { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
   }
 }
 
@@ -103,11 +114,8 @@ function saveStats(stats) {
 class TaskRouter {
   constructor(ollamaUrl = 'http://localhost:11434') {
     this.ollamaUrl   = ollamaUrl;
-    this.claudeKey   = process.env.ANTHROPIC_API_KEY;
-    // Override either model via env var without editing source
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
-    this.claudeModel = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-    this.stats       = loadStats();  // persisted across runs
+    this.stats       = loadStats();
   }
 
   // ── Local Ollama ─────────────────────────────────────────────────────────────
@@ -134,60 +142,21 @@ class TaskRouter {
     return { source: 'ollama', model: this.ollamaModel, text: data.response };
   }
 
-  // ── Claude API ───────────────────────────────────────────────────────────────
-  async callClaude(prompt) {
-    const t0  = Date.now();
-    log('CLAUDE', `Sending ${prompt.length} chars to ${this.claudeModel}`);
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         this.claudeKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      this.claudeModel,
-        max_tokens: 2048,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`Claude API error: ${err.error?.message}`);
-    }
-
-    const data    = await res.json();
-    const elapsed = Date.now() - t0;
-
-    // FIX: original guide only counted output tokens — input tokens also cost money
-    // Sonnet 4.6: $3/MTok input, $15/MTok output
-    const inputCost  = (data.usage?.input_tokens  ?? 0) * 0.000003;
-    const outputCost = (data.usage?.output_tokens ?? 0) * 0.000015;
-    const cost       = inputCost + outputCost;
-
-    log('CLAUDE', `Done in ${elapsed}ms — in:${data.usage?.input_tokens} out:${data.usage?.output_tokens} tokens — est. cost $${cost.toFixed(4)}`);
-
-    this.stats.claudeCalls++;
-    this.stats.totalCost += cost;
-    this.stats.routes.push({
-      ts:    new Date().toISOString(),
-      route: 'claude',
-      model: this.claudeModel,
-      ms:    elapsed,
-      inputTokens:  data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      cost,
-    });
+  // ── Claude Code referral ─────────────────────────────────────────────────────
+  referToClaudeCode(prompt) {
+    log('ROUTER', 'Complex task — referring to Claude Code');
+    this.stats.claudeCodeReferrals++;
+    this.stats.routes.push({ ts: new Date().toISOString(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);
-
-    return { source: 'claude', model: this.claudeModel, text: data.content[0].text, cost };
+    return {
+      source: 'claude-code',
+      model:  'n/a',
+      text:   `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
+    };
   }
 
   // ── Complexity assessment ────────────────────────────────────────────────────
-  // NOTE: keyword matching is intentionally simple — tune these lists as you go.
-  // Use --simple / --complex flags to override until you trust auto-routing.
+  // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
   assessComplexity(prompt) {
     const simple  = ['format','clean','extract','convert','parse','organise',
                      'organize','list','template','rename','sort'];
@@ -195,9 +164,6 @@ class TaskRouter {
                      'plan','refactor','security','tradeoff','implement','explain'];
     const lower   = prompt.toLowerCase();
 
-    const isMixed = lower.includes('first') &&
-                    (lower.includes('then') || lower.includes('next'));
-    if (isMixed)                                 return 'mixed';
     if (complex.some(kw => lower.includes(kw))) return 'complex';
     if (simple.some(kw =>  lower.includes(kw))) return 'simple';
     return prompt.length > 500 ? 'complex' : 'simple';
@@ -209,51 +175,13 @@ class TaskRouter {
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
     if (complexity === 'simple')  return this.callOllama(prompt);
-    if (complexity === 'complex') return this.callClaude(prompt);
-    if (complexity === 'mixed')   return this.routeMixed(prompt);
+    if (complexity === 'complex') return this.referToClaudeCode(prompt);
     throw new Error(`Unknown complexity: ${complexity}`);
-  }
-
-  // ── Mixed: plan → subtasks → synthesise ─────────────────────────────────────
-  // WARNING: this makes 2+ Claude calls. For borderline tasks, --complex is cheaper.
-  async routeMixed(prompt) {
-    log('ROUTER', 'Mixed — breaking into subtasks via Claude');
-
-    const plan = await this.callClaude(
-      `Break this task into subtasks. Reply ONLY with a JSON array, no other text:
-[{"subtask":"...", "type":"simple|complex"}]
-
-Task: ${prompt}`
-    );
-
-    let subtasks;
-    try {
-      const match = plan.text.match(/\[[\s\S]*]/);
-      subtasks = JSON.parse(match ? match[0] : plan.text);
-    } catch {
-      log('ROUTER', 'Could not parse subtask JSON — routing whole task as complex');
-      return this.callClaude(prompt);
-    }
-
-    const results = await Promise.all(
-      subtasks.map(async st => ({
-        subtask: st.subtask,
-        result:  (await this.route(st.subtask, st.type)).text,
-      }))
-    );
-
-    return this.callClaude(
-      `Combine these results into a single coherent response.
-
-${results.map((r, i) => `## Subtask ${i + 1}: ${r.subtask}\n${r.result}`).join('\n\n')}
-
-Original request: ${prompt}`
-    );
   }
 
   getStats()   { return { ...this.stats }; }
   resetStats() {
-    this.stats = { ollamaCalls: 0, claudeCalls: 0, totalCost: 0, routes: [] };
+    this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
     saveStats(this.stats);
   }
 }
@@ -264,8 +192,6 @@ module.exports = TaskRouter;
 ---
 
 ## Step 3 — Create `claude-orchestrator.js`
-
-Wraps the router and applies your personal skills + rules to every prompt.
 
 ```javascript
 // claude-orchestrator.js
@@ -320,7 +246,6 @@ class ClaudeOrchestrator {
 
     console.log('\n' + '-'.repeat(60));
     console.log(`SOURCE : ${result.source.toUpperCase()}  (${result.model})`);
-    if (result.cost) console.log(`COST   : $${result.cost.toFixed(4)}`);
     console.log('-'.repeat(60));
     console.log(result.text);
     console.log('='.repeat(60) + '\n');
@@ -345,7 +270,7 @@ module.exports = ClaudeOrchestrator;
 
 ## Step 4 — Create `index.js`
 
-Your entry point. **Edit `mySkills` and `myRules` to match your own setup.**
+**Edit `mySkills` and `myRules` to match your own workflow.**
 
 ```javascript
 #!/usr/bin/env node
@@ -353,9 +278,6 @@ Your entry point. **Edit `mySkills` and `myRules` to match your own setup.**
 
 const ClaudeOrchestrator = require('./claude-orchestrator');
 
-// Your custom skills
-// The key is a trigger word; when it appears in your request the skill prompt
-// is prepended automatically.
 const mySkills = {
   'code-review': `You are an expert code reviewer.
 Focus on: code quality, security vulnerabilities, performance, maintainability.
@@ -370,7 +292,6 @@ Write clear, concise documentation with examples and code snippets.
 Use active voice and plain language.`,
 };
 
-// Your custom rules — applied to every request automatically
 const myRules = {
   format:   'Use markdown formatting in all responses.',
   tone:     'Be professional but conversational.',
@@ -384,41 +305,46 @@ async function main() {
 
   if (!args.length || args[0] === '--help') {
     console.log(`
-Claude Code + Ollama Orchestrator
-----------------------------------
+Ollama Orchestrator (Claude Code edition)
+-----------------------------------------
+Simple tasks  → handled by local Ollama (free)
+Complex tasks → flagged for your Claude Code session
+
 Usage:
   node index.js "Your request"
   node index.js --stats
   node index.js --reset
 
-Force a backend (bypasses auto-routing):
+Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
 
+Env vars:
+  OLLAMA_MODEL   default: mistral
+
 Examples:
   node index.js "Format this JSON: {name:'alice'}"
-  node index.js "code-review: check this for SQL injection"
-  node index.js "Design a REST API for a blog"
+  node index.js "Extract all email addresses from this text: ..."
+  node index.js --simple "Summarise this in one sentence: ..."
     `);
     return;
   }
 
   if (args[0] === '--stats') {
-    const stats = orchestrator.getStats();
+    const stats  = orchestrator.getStats();
     const ollama = stats.ollamaCalls;
-    const claude = stats.claudeCalls;
-    const total  = ollama + claude;
+    const refs   = stats.claudeCodeReferrals;
+    const total  = ollama + refs;
     const pct    = total ? Math.round((ollama / total) * 100) : 0;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
-    console.log(`Ollama calls : ${ollama}  (${pct}% of total — free)`);
-    console.log(`Claude calls : ${claude}  (${100 - pct}% of total — paid)`);
-    console.log(`Total cost   : $${stats.totalCost.toFixed(4)}`);
-    console.log(`Total calls  : ${total}`);
+    console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
+    console.log(`Claude Code refers : ${refs}  (${100 - pct}% of total)`);
+    console.log(`Total requests     : ${total}`);
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');
-      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(6)}  ${r.ms}ms${r.cost ? `  $${r.cost.toFixed(4)}` : ''}`));
+      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`));
     }
     return;
   }
@@ -434,6 +360,11 @@ Examples:
 
   if (args[0] === '--simple')  { force = 'simple';  prompt = args.slice(1).join(' '); }
   if (args[0] === '--complex') { force = 'complex'; prompt = args.slice(1).join(' '); }
+
+  if (!prompt.trim()) {
+    console.error('[ERROR] No prompt provided.');
+    process.exit(1);
+  }
 
   try {
     await orchestrator.process(prompt, force);
@@ -454,28 +385,25 @@ main();
 # 1. Verify Node.js version (must be 18+)
 node --version
 
-# 2. Make sure Ollama is running in another terminal
+# 2. Start Ollama in another terminal
 ollama serve
 
-# 3. Set your API key
-export ANTHROPIC_API_KEY="sk-ant-..."
+# 3. Set your model (no API key needed)
+export OLLAMA_MODEL=mistral
 
-# 4. No npm install needed — Node 18+ includes fetch natively
+# 4. Warm up the model — first request loads it into memory (~20s on M4 Pro)
+node index.js "Say hello"
 
-# 5. Test a simple task → should route to Ollama (free)
+# 5. Now test for real — should be fast (~3s warm)
 node index.js "Format this JSON: {name:'alice',age:30}"
 
-# 6. Test a complex task → should route to Claude API
+# 6. Test complex routing — should be instant, no model call
 node index.js "Design a REST API for a multi-tenant blog platform"
 
 # 7. Test a skill trigger
 node index.js "code-review: function login(u){return db.query('SELECT * FROM users WHERE id='+u)}"
 
-# 8. Force a specific backend
-node index.js --simple  "Summarise this in one sentence: ..."
-node index.js --complex "Explain the tradeoffs of event sourcing vs CQRS"
-
-# 9. Check stats
+# 8. Check stats
 node index.js --stats
 ```
 
@@ -490,21 +418,18 @@ your-project/
 ├── index.js                ← Step 4
 ├── orchestrator.log        ← auto-created on first run (tail -f to monitor)
 ├── orchestrator-stats.json ← auto-created on first run, persists across runs
-└── .env  (optional)        ← env vars below
+└── .env  (optional)        ← OLLAMA_MODEL=mistral
 ```
 
-**Env vars** (all optional except `ANTHROPIC_API_KEY`):
+**Env vars:**
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `ANTHROPIC_API_KEY` | — | **Required.** Your Anthropic API key |
 | `OLLAMA_MODEL` | `mistral` | Local model to use |
-| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude model to use |
 
 - [ ] `ollama-router.js` created
 - [ ] `claude-orchestrator.js` created
 - [ ] `index.js` created and skills/rules customised to your workflow
-- [ ] `ANTHROPIC_API_KEY` set in environment
 - [ ] Node.js 18+ confirmed (`node --version`)
 - [ ] Ollama running with a model pulled (`ollama list`)
 
@@ -515,8 +440,10 @@ your-project/
 ```
 $ node index.js "Format this JSON: {name:'alice',age:30}"
 
-[ROUTER] complexity=simple
-[OLLAMA] Done in 310ms
+[2026-05-09T12:30:34.566Z] [REQUEST] Format this JSON: {name:'alice',age:30}
+[2026-05-09T12:30:34.566Z] [ROUTER] complexity=simple (auto)
+[2026-05-09T12:30:34.566Z] [OLLAMA] Sending 173 chars to mistral
+[2026-05-09T12:30:37.841Z] [OLLAMA] Done in 3275ms — response 537 chars
 
 SOURCE : OLLAMA  (mistral)
 ------------------------------------------------------------
@@ -527,15 +454,21 @@ SOURCE : OLLAMA  (mistral)
 ```
 
 ```
-$ node index.js "Design a caching strategy for a high-traffic API"
+$ node index.js "Design a REST API for a blog"
 
-[ROUTER] complexity=complex
-[CLAUDE] Done in 2740ms  est. cost $0.0028
+[2026-05-09T12:26:36.277Z] [REQUEST] Design a REST API for a blog
+[2026-05-09T12:26:36.277Z] [ROUTER] complexity=complex (auto)
+[2026-05-09T12:26:36.277Z] [ROUTER] Complex task — referring to Claude Code
 
-SOURCE : CLAUDE  (claude-sonnet-4-6)
+SOURCE : CLAUDE-CODE  (n/a)
 ------------------------------------------------------------
-## Caching Strategy for a High-Traffic API
-...
+This task needs Claude Code.
+
+Copy this prompt into your Claude Code session:
+
+---
+Design a REST API for a blog
+---
 ```
 
 ---
@@ -544,41 +477,38 @@ SOURCE : CLAUDE  (claude-sonnet-4-6)
 
 ### Change the local model
 
-Set the env var — no source edit needed:
 ```bash
-OLLAMA_MODEL=llama3 node index.js "your request"
-# or export it:
-export OLLAMA_MODEL=llama3
-```
-
-### Use a different Claude model
-
-```bash
-# Most capable (higher cost):
-CLAUDE_MODEL=claude-opus-4-7 node index.js "your request"
-
-# Cheapest option:
-CLAUDE_MODEL=claude-haiku-4-5-20251001 node index.js "your request"
+export OLLAMA_MODEL=llama3.2    # more capable
+export OLLAMA_MODEL=llama3.2:3b # fastest on Apple Silicon
 ```
 
 ### Add your own routing keywords
 
+In `ollama-router.js`, expand the keyword lists:
+
 ```javascript
-const simple  = [..., 'your-simple-keyword'];
-const complex = [..., 'your-complex-keyword'];
+const simple  = [..., 'summarise', 'translate', 'your-keyword'];
+const complex = [..., 'migrate', 'your-keyword'];
 ```
+
+When auto-routing misses, use `--simple` or `--complex` to force it and
+then add the triggering word to the appropriate list.
 
 ---
 
-## Cost Savings Estimate
+## Performance Notes (Apple Silicon)
 
-*Based on Sonnet 4.6 pricing ($3/$15 per MTok input/output); Ollama is always free.*
+Tested on **Apple M4 Pro** with Ollama running locally.
 
-| Monthly requests | All-Claude cost | 75% Ollama | Saving  |
-|-----------------|-----------------|------------|---------|
-| 100             | ~$0.50          | ~$0.13     | **74%** |
-| 500             | ~$2.50          | ~$0.63     | **75%** |
-| 2,000           | ~$10.00         | ~$2.50     | **75%** |
+| Model         | Size  | Cold start | Warm  | Verdict                          |
+|---------------|-------|-----------|-------|----------------------------------|
+| `llama3.2:3b` | 2 GB  | ~5s       | <1s   | Best for high-volume simple tasks|
+| `mistral`     | 4 GB  | ~20s      | ~3s   | Good default balance             |
+| `qwen3.6`     | 23 GB | ~30s      | ~10s  | Overkill for simple routing      |
+
+**Cold start is a one-time cost per session.** After the first request,
+the model stays warm in memory for the duration of your `ollama serve` session.
+Run a throwaway warm-up request if latency matters on the first real task.
 
 ---
 
@@ -588,27 +518,27 @@ const complex = [..., 'your-complex-keyword'];
 |---------|-----|
 | `ECONNREFUSED localhost:11434` | Run `ollama serve` in another terminal |
 | `model not found` | Run `ollama pull mistral` |
-| `invalid x-api-key` | `export ANTHROPIC_API_KEY="sk-ant-..."` |
-| Very slow Ollama responses | Try `ollama pull tinyllama` (fastest) |
+| First request is very slow | Normal — cold start. Subsequent requests will be fast |
+| All requests are slow | Model is too large for your RAM; try `llama3.2:3b` |
 | `fetch is not defined` | Upgrade to Node.js 18+: `node --version` |
-| Claude returns 529 overloaded | Add retry with exponential back-off |
-| High Claude costs | Move more task types to `simple` keywords |
+| Wrong route (simple sent to Ollama when it shouldn't be) | Use `--complex` flag and add keyword to complex list |
 
 ---
 
 ## Tips
 
 **Do**
-- Start with `--complex` for everything until you trust auto-routing
-- Gradually expand the `simple` keyword list as you gain confidence
-- Use `--stats` regularly to track real savings
-- Keep security / compliance / production tasks on `--complex`
+- Run a warm-up request at the start of each session to pre-load the model
+- Use `--simple` / `--complex` flags until you trust auto-routing
+- Gradually expand the keyword lists based on real misroutes you observe
+- Use `--stats` to track how often you're hitting Ollama vs Claude Code
 
 **Don't**
-- Route sensitive data to Ollama if your local machine is not secure
-- Set `max_tokens` higher than needed (drives up API cost)
-- Forget to keep `ollama serve` running before invoking the script
+- Use a 20GB+ model as your default for simple tasks — pick the smallest
+  model that gives acceptable quality
+- Route sensitive data through Ollama if your machine could be compromised
+- Forget that `ollama serve` must be running before invoking the script
 
 ---
 
-*Guide version: May 2026 — Node 18+, Ollama 0.x, claude-sonnet-4-6*
+*Guide version: May 2026 — Node 18+, Ollama 0.x, Apple M4 Pro benchmarks*

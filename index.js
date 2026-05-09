@@ -30,46 +30,46 @@ async function main() {
 
   if (!args.length || args[0] === '--help') {
     console.log(`
-Claude Code + Ollama Orchestrator
-----------------------------------
+Ollama Orchestrator (Claude Code edition)
+-----------------------------------------
+Simple tasks  → handled by local Ollama (free)
+Complex tasks → flagged for your Claude Code session
+
 Usage:
   node index.js "Your request"
   node index.js --stats
   node index.js --reset
 
-Force a backend (bypasses auto-routing):
+Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
 
 Env vars:
-  ANTHROPIC_API_KEY  required
-  OLLAMA_MODEL       default: mistral
-  CLAUDE_MODEL       default: claude-sonnet-4-6
+  OLLAMA_MODEL   default: mistral
 
 Examples:
   node index.js "Format this JSON: {name:'alice'}"
-  node index.js "code-review: check this for SQL injection"
-  node index.js "Design a REST API for a blog"
+  node index.js "Extract all email addresses from this text: ..."
+  node index.js --simple "Summarise this in one sentence: ..."
     `);
     return;
   }
 
   if (args[0] === '--stats') {
-    const stats = orchestrator.getStats();
+    const stats  = orchestrator.getStats();
     const ollama = stats.ollamaCalls;
-    const claude = stats.claudeCalls;
-    const total  = ollama + claude;
+    const refs   = stats.claudeCodeReferrals;
+    const total  = ollama + refs;
     const pct    = total ? Math.round((ollama / total) * 100) : 0;
     console.log('\nOrchestrator Stats');
     console.log('------------------');
-    console.log(`Ollama calls : ${ollama}  (${pct}% of total — free)`);
-    console.log(`Claude calls : ${claude}  (${100 - pct}% of total — paid)`);
-    console.log(`Total cost   : $${stats.totalCost.toFixed(4)}`);
-    console.log(`Total calls  : ${total}`);
+    console.log(`Ollama calls       : ${ollama}  (${pct}% of total — free)`);
+    console.log(`Claude Code refers : ${refs}  (${100 - pct}% of total)`);
+    console.log(`Total requests     : ${total}`);
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');
-      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(6)}  ${r.ms}ms${r.cost ? `  $${r.cost.toFixed(4)}` : ''}`));
+      last5.forEach(r => console.log(`  ${r.ts}  ${r.route.padEnd(12)}  ${r.ms ? r.ms + 'ms' : ''}`));
     }
     return;
   }

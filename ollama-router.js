@@ -1,5 +1,6 @@
 // ollama-router.js
 // Requires Node.js 18+ (native fetch — no npm install needed)
+// Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
 
 const fs   = require('fs');
 const path = require('path');
@@ -17,7 +18,7 @@ function loadStats() {
   try {
     return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
   } catch {
-    return { ollamaCalls: 0, claudeCalls: 0, totalCost: 0, routes: [] };
+    return { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
   }
 }
 
@@ -28,9 +29,7 @@ function saveStats(stats) {
 class TaskRouter {
   constructor(ollamaUrl = 'http://localhost:11434') {
     this.ollamaUrl   = ollamaUrl;
-    this.claudeKey   = process.env.ANTHROPIC_API_KEY;
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
-    this.claudeModel = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
     this.stats       = loadStats();
   }
 
@@ -58,57 +57,21 @@ class TaskRouter {
     return { source: 'ollama', model: this.ollamaModel, text: data.response };
   }
 
-  // ── Claude API ───────────────────────────────────────────────────────────────
-  async callClaude(prompt) {
-    const t0  = Date.now();
-    log('CLAUDE', `Sending ${prompt.length} chars to ${this.claudeModel}`);
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         this.claudeKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      this.claudeModel,
-        max_tokens: 2048,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`Claude API error: ${err.error?.message}`);
-    }
-
-    const data    = await res.json();
-    const elapsed = Date.now() - t0;
-
-    // Fix: cost includes both input AND output tokens
-    const inputCost  = (data.usage?.input_tokens  ?? 0) * 0.000003;   // $3/MTok
-    const outputCost = (data.usage?.output_tokens ?? 0) * 0.000015;   // $15/MTok
-    const cost       = inputCost + outputCost;
-
-    log('CLAUDE', `Done in ${elapsed}ms — in:${data.usage?.input_tokens} out:${data.usage?.output_tokens} tokens — est. cost $${cost.toFixed(4)}`);
-
-    this.stats.claudeCalls++;
-    this.stats.totalCost += cost;
-    this.stats.routes.push({
-      ts:    new Date().toISOString(),
-      route: 'claude',
-      model: this.claudeModel,
-      ms:    elapsed,
-      inputTokens:  data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      cost,
-    });
+  // ── Claude Code referral ─────────────────────────────────────────────────────
+  referToClaudeCode(prompt) {
+    log('ROUTER', 'Complex task — referring to Claude Code');
+    this.stats.claudeCodeReferrals++;
+    this.stats.routes.push({ ts: new Date().toISOString(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);
-
-    return { source: 'claude', model: this.claudeModel, text: data.content[0].text, cost };
+    return {
+      source: 'claude-code',
+      model:  'n/a',
+      text:   `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
+    };
   }
 
   // ── Complexity assessment ────────────────────────────────────────────────────
+  // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
   assessComplexity(prompt) {
     const simple  = ['format','clean','extract','convert','parse','organise',
                      'organize','list','template','rename','sort'];
@@ -116,9 +79,6 @@ class TaskRouter {
                      'plan','refactor','security','tradeoff','implement','explain'];
     const lower   = prompt.toLowerCase();
 
-    const isMixed = lower.includes('first') &&
-                    (lower.includes('then') || lower.includes('next'));
-    if (isMixed)                                 return 'mixed';
     if (complex.some(kw => lower.includes(kw))) return 'complex';
     if (simple.some(kw =>  lower.includes(kw))) return 'simple';
     return prompt.length > 500 ? 'complex' : 'simple';
@@ -130,50 +90,13 @@ class TaskRouter {
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
     if (complexity === 'simple')  return this.callOllama(prompt);
-    if (complexity === 'complex') return this.callClaude(prompt);
-    if (complexity === 'mixed')   return this.routeMixed(prompt);
+    if (complexity === 'complex') return this.referToClaudeCode(prompt);
     throw new Error(`Unknown complexity: ${complexity}`);
-  }
-
-  // ── Mixed: plan → subtasks → synthesise ─────────────────────────────────────
-  async routeMixed(prompt) {
-    log('ROUTER', 'Mixed — breaking into subtasks via Claude');
-
-    const plan = await this.callClaude(
-      `Break this task into subtasks. Reply ONLY with a JSON array, no other text:
-[{"subtask":"...", "type":"simple|complex"}]
-
-Task: ${prompt}`
-    );
-
-    let subtasks;
-    try {
-      const match = plan.text.match(/\[[\s\S]*]/);
-      subtasks = JSON.parse(match ? match[0] : plan.text);
-    } catch {
-      log('ROUTER', 'Could not parse subtask JSON — routing whole task as complex');
-      return this.callClaude(prompt);
-    }
-
-    const results = await Promise.all(
-      subtasks.map(async st => ({
-        subtask: st.subtask,
-        result:  (await this.route(st.subtask, st.type)).text,
-      }))
-    );
-
-    return this.callClaude(
-      `Combine these results into a single coherent response.
-
-${results.map((r, i) => `## Subtask ${i + 1}: ${r.subtask}\n${r.result}`).join('\n\n')}
-
-Original request: ${prompt}`
-    );
   }
 
   getStats()   { return { ...this.stats }; }
   resetStats() {
-    this.stats = { ollamaCalls: 0, claudeCalls: 0, totalCost: 0, routes: [] };
+    this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
     saveStats(this.stats);
   }
 }

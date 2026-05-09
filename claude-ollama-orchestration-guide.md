@@ -54,6 +54,29 @@ If a task has a deterministic CLI tool that does the job, use the tool.
 
 ---
 
+## Installation
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/why-pengo/claude-ollama-orchestrator.git
+cd claude-ollama-orchestrator
+
+# 2. No npm install needed — Node 18+ includes fetch natively
+
+# 3. Add env vars to your shell profile (~/.zshrc or ~/.bashrc)
+export OLLAMA_MODEL=mistral
+export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
+
+# 4. Reload your profile
+source ~/.zshrc   # or ~/.bashrc
+
+# 5. Verify
+node --version    # must be 18+
+node $OLLAMA_ORCH_PATH --help
+```
+
+---
+
 ## Prerequisites
 
 - **Claude Code** installed (`claude --version`)
@@ -292,6 +315,8 @@ module.exports = ClaudeOrchestrator;
 #!/usr/bin/env node
 // index.js
 
+const fs   = require('fs');
+const path = require('path');
 const ClaudeOrchestrator = require('./claude-orchestrator');
 
 const mySkills = {
@@ -316,6 +341,29 @@ const myRules = {
 
 const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
 
+function parseArgs(rawArgs) {
+  const remaining = [...rawArgs];
+  let force    = null;
+  let filePath = null;
+
+  // Extract --simple / --complex (positional — must be first)
+  if (remaining[0] === '--simple')  { force = 'simple';  remaining.shift(); }
+  if (remaining[0] === '--complex') { force = 'complex'; remaining.shift(); }
+
+  // Extract --file <path> (can appear anywhere in remaining args)
+  const fileIdx = remaining.indexOf('--file');
+  if (fileIdx !== -1) {
+    if (!remaining[fileIdx + 1]) {
+      console.error('[ERROR] --file requires a path argument.');
+      process.exit(1);
+    }
+    filePath = remaining[fileIdx + 1];
+    remaining.splice(fileIdx, 2);
+  }
+
+  return { force, filePath, promptText: remaining.join(' ').trim() };
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -328,6 +376,7 @@ Complex tasks → flagged for your Claude Code session
 
 Usage:
   node index.js "Your request"
+  node index.js --file <path> "Your instruction"
   node index.js --stats
   node index.js --reset
 
@@ -335,13 +384,18 @@ Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
 
+Pass a file safely (avoids shell substitution and ARG_MAX limits):
+  node index.js --simple --file routers/bp.py "Extract all route paths"
+  node index.js --file models.py "Summarise what this module does"
+
 Env vars:
-  OLLAMA_MODEL   default: mistral
+  OLLAMA_MODEL      default: mistral
+  OLLAMA_ORCH_PATH  set in shell profile for portable CLAUDE.md instructions
 
 Examples:
   node index.js "Format this JSON: {name:'alice'}"
-  node index.js "Extract all email addresses from this text: ..."
-  node index.js --simple "Summarise this in one sentence: ..."
+  node index.js --simple --file data.csv "Convert this to JSON"
+  node index.js --file routers/bp.py "Extract all API route paths and HTTP methods"
     `);
     return;
   }
@@ -371,11 +425,20 @@ Examples:
     return;
   }
 
-  let force  = null;
-  let prompt = args.join(' ');
+  const { force, filePath, promptText } = parseArgs(args);
 
-  if (args[0] === '--simple')  { force = 'simple';  prompt = args.slice(1).join(' '); }
-  if (args[0] === '--complex') { force = 'complex'; prompt = args.slice(1).join(' '); }
+  let prompt = promptText;
+
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      console.error(`[ERROR] File not found: ${resolved}`);
+      process.exit(1);
+    }
+    const content = fs.readFileSync(resolved, 'utf8');
+    prompt = prompt ? `${prompt}\n\n${content}` : content;
+    console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
+  }
 
   if (!prompt.trim()) {
     console.error('[ERROR] No prompt provided.');
@@ -404,8 +467,9 @@ node --version
 # 2. Start Ollama in another terminal
 ollama serve
 
-# 3. Set your model (no API key needed)
+# 3. Set env vars (add these to ~/.zshrc or ~/.bashrc to persist)
 export OLLAMA_MODEL=mistral
+export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
 
 # 4. Warm up the model — first request loads it into memory (~20s on M4 Pro)
 node index.js "Say hello"
@@ -413,13 +477,16 @@ node index.js "Say hello"
 # 5. Now test for real — should be fast (~3s warm)
 node index.js "Format this JSON: {name:'alice',age:30}"
 
-# 6. Test complex routing — should be instant, no model call
+# 6. Test --file flag (safe file passing — no shell substitution)
+node index.js --simple --file /path/to/any/file.py "Summarise what this module does"
+
+# 7. Test complex routing — should be instant, no model call
 node index.js "Design a REST API for a multi-tenant blog platform"
 
-# 7. Test a skill trigger
+# 8. Test a skill trigger
 node index.js "code-review: function login(u){return db.query('SELECT * FROM users WHERE id='+u)}"
 
-# 8. Check stats
+# 9. Check stats
 node index.js --stats
 ```
 
@@ -442,6 +509,7 @@ your-project/
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `OLLAMA_MODEL` | `mistral` | Local model to use |
+| `OLLAMA_ORCH_PATH` | — | Full path to `index.js` — set in shell profile for portable CLAUDE.md instructions |
 
 - [ ] `ollama-router.js` created
 - [ ] `claude-orchestrator.js` created
@@ -552,6 +620,8 @@ Run a throwaway warm-up request if latency matters on the first real task.
 | All requests are slow | Model is too large for your RAM; try `llama3.2:3b` |
 | `fetch is not defined` | Upgrade to Node.js 18+: `node --version` |
 | Wrong route (simple sent to Ollama when it shouldn't be) | Use `--complex` flag and add keyword to complex list |
+| `OLLAMA_ORCH_PATH` not found in CLAUDE.md session | Add `export OLLAMA_ORCH_PATH=...` to `~/.zshrc` and restart Claude Code |
+| `[ERROR] File not found` with `--file` | Path is relative to where you run the command — use an absolute path or `cd` first |
 
 ---
 

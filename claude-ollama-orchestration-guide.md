@@ -28,10 +28,11 @@ and Claude Code (which you already have open) handles the rest.
 
 | Task Type                    | Backend      | Example                        |
 |------------------------------|--------------|--------------------------------|
-| Data formatting / cleanup    | Ollama       | Format JSON, clean CSV         |
+| Data formatting              | Ollama       | Format JSON, convert CSV       |
 | Simple text transformations  | Ollama       | Convert markdown to HTML       |
 | Extract / parse / organise   | Ollama       | Pull emails from text          |
 | Write documentation drafts   | Ollama       | Basic README, comments         |
+| Code cleanup / refactoring   | Claude Code  | Clean up, simplify, reorganise |
 | Complex code generation      | Claude Code  | Design a service, algorithm    |
 | Architecture / planning      | Claude Code  | System design, tradeoffs       |
 | Debugging / security review  | Claude Code  | Find bugs, audit for vulns     |
@@ -491,8 +492,22 @@ const simple  = [..., 'summarise', 'translate', 'your-keyword'];
 const complex = [..., 'migrate', 'your-keyword'];
 ```
 
-When auto-routing misses, use `--simple` or `--complex` to force it and
-then add the triggering word to the appropriate list.
+**Fixing a misroute:** When a task routes to Ollama but shouldn't, the
+instinct is to remove the matching keyword from `simple`. That's often
+not enough — if the prompt also contains another simple keyword, it will
+still match. Instead, add the offending word to `complex`. Complex is
+checked first, so it will always win.
+
+```javascript
+// Wrong fix — 'organise' still matches simple and wins
+const simple = ['format', /* removed: 'clean' */ 'organise', ...];
+
+// Right fix — 'clean' in complex wins before 'organise' is checked
+const complex = [..., 'clean'];
+```
+
+After any keyword change, re-run the exact prompt that misrouted to
+confirm the fix before committing.
 
 ---
 

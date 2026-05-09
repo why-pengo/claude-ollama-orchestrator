@@ -22,6 +22,8 @@ function StatsPanel({ stats, ollamaOnline, width }) {
   const total = ollama + refs + fallbacks;
   const ollamaPct = total ? Math.round((ollama / total) * 100) : 0;
   const refsPct = total ? Math.round((refs / total) * 100) : 0;
+  const estimatedTokens = Math.ceil((stats?.totalOffloadedChars ?? 0) / 4);
+  const estimatedSavings = ((estimatedTokens / 1_000_000) * 3.0).toFixed(2);
 
   const fbRoutes = (stats?.routes || []).filter((r) => r.route === 'ollama-fallback');
   const byLabel = fbRoutes.reduce((acc, r) => {
@@ -59,6 +61,8 @@ function StatsPanel({ stats, ollamaOnline, width }) {
       `  ↳ down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / err=${byLabel['OLLAMA-ERROR'] || 0}`,
     ),
     h(Text, null, `Total         :${String(total).padStart(5)}`),
+    h(Text, null, `Offloaded tkns: ${estimatedTokens.toLocaleString()}`),
+    h(Text, { color: 'green' }, `Est. savings  : ~$${estimatedSavings}`),
     h(Text, null, ''),
     h(Text, { bold: true }, 'Last 5 routes:'),
     ...(last5.length === 0

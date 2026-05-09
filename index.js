@@ -135,12 +135,20 @@ Examples:
       return acc;
     }, {});
     const fbDetail = `down=${byLabel['OLLAMA-DOWN'] || 0} / timeout=${byLabel['OLLAMA-TIMEOUT'] || 0} / error=${byLabel['OLLAMA-ERROR'] || 0}`;
+    const offloadedChars = stats.totalOffloadedChars || 0;
+    const estimatedTokens = Math.ceil(offloadedChars / 4);
+    const estimatedSavings = ((estimatedTokens / 1_000_000) * 3.0).toFixed(2);
+
     console.log('\nOrchestrator Stats');
     console.log('------------------');
     console.log(`Ollama calls       : ${ollama}  (${ollamaPct}% of total — free)`);
     console.log(`Claude Code refers : ${refs}  (${refsPct}% of total)`);
     console.log(`Ollama fallbacks   : ${fallbacks}  (${fbDetail})`);
     console.log(`Total requests     : ${total}`);
+    console.log(`Offloaded tokens   : ${estimatedTokens.toLocaleString()}`);
+    console.log(
+      `Estimated savings  : ~$${estimatedSavings}  (vs Claude Sonnet @ $3/M input tokens)`,
+    );
     if (stats.routes?.length) {
       const last5 = stats.routes.slice(-5).reverse();
       console.log('\nLast 5 routes:');

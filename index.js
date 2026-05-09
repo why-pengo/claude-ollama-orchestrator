@@ -33,14 +33,16 @@ function parseArgs(rawArgs) {
   let filePath = null;
   let dryRun = false;
 
-  // Extract --simple / --complex (positional — must be first)
-  if (remaining[0] === '--simple') {
+  // Extract --simple / --complex (can appear anywhere)
+  const simpleIdx = remaining.indexOf('--simple');
+  if (simpleIdx !== -1) {
     force = 'simple';
-    remaining.shift();
+    remaining.splice(simpleIdx, 1);
   }
-  if (remaining[0] === '--complex') {
+  const complexIdx = remaining.indexOf('--complex');
+  if (complexIdx !== -1) {
     force = 'complex';
-    remaining.shift();
+    remaining.splice(complexIdx, 1);
   }
 
   // Extract --dry-run (can appear anywhere in remaining args)
@@ -169,12 +171,15 @@ Examples:
       complexity = force;
       reason = `forced via --${force} flag`;
     } else {
-      ({ complexity, reason } = orchestrator.router.assessComplexityWithReason(prompt));
+      const routingPrompt = orchestrator.computeRoutingPrompt(prompt);
+      ({ complexity, reason } = orchestrator.router.assessComplexityWithReason(routingPrompt));
     }
     console.log(`\n[DRY-RUN] Route: ${complexity}  ${reason}`);
     if (filePath) console.log(`File    : ${filePath} (${fileContentLength} chars)`);
-    const preview = promptText.length > 120 ? promptText.slice(0, 120) + '...' : promptText;
-    console.log(`Prompt  : (${promptText.length} chars) ${preview}\n`);
+    const instructionText = promptText || '(file content only)';
+    const preview =
+      instructionText.length > 120 ? instructionText.slice(0, 120) + '...' : instructionText;
+    console.log(`Prompt  : (${prompt.length} chars total) ${preview}\n`);
     return;
   }
 

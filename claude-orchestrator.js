@@ -33,6 +33,18 @@ class ClaudeOrchestrator {
     return constraints ? `${prompt}\n\n--- Rules ---\n${constraints}` : prompt;
   }
 
+  // Pure computation — same enrichment as process() but with no logging or stats side effects.
+  // Use this in --dry-run so routing assessment matches what a real run would route on.
+  computeRoutingPrompt(userRequest) {
+    let out = userRequest;
+    for (const [keyword, skillPrompt] of Object.entries(this.skills)) {
+      if (userRequest.toLowerCase().includes(keyword)) {
+        out = `${skillPrompt}\n\nRequest: ${out}`;
+      }
+    }
+    return this.enforceRules(out);
+  }
+
   async process(userRequest, forceComplexity = null) {
     const fs = require('fs');
     const path = require('path');

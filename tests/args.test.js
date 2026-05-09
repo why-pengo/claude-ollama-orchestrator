@@ -92,8 +92,16 @@ describe('parseArgs — --dry-run flag', () => {
       dryRun: true,
     }));
 
-  it('--dry-run with --simple', () =>
+  it('--simple --dry-run (simple first)', () =>
     assert.deepEqual(parseArgs(['--simple', '--dry-run', 'format this']), {
+      force: 'simple',
+      filePath: null,
+      promptText: 'format this',
+      dryRun: true,
+    }));
+
+  it('--dry-run --simple (dry-run first)', () =>
+    assert.deepEqual(parseArgs(['--dry-run', '--simple', 'format this']), {
       force: 'simple',
       filePath: null,
       promptText: 'format this',

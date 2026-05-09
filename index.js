@@ -133,7 +133,7 @@ Examples:
     const medium = stats.mediumCalls || 0;
     const refs = stats.claudeCodeReferrals || 0;
     const fallbacks = stats.ollamaFallbacks || 0;
-    const total = simple + medium + refs + fallbacks;
+    const total = stats.totalRequests || 0;
     const simplePct = total ? Math.round((simple / total) * 100) : 0;
     const mediumPct = total ? Math.round((medium / total) * 100) : 0;
     const refsPct = total ? Math.round((refs / total) * 100) : 0;

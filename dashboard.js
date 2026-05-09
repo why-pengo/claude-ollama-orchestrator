@@ -21,7 +21,7 @@ function StatsPanel({ stats, ollamaOnline, width }) {
   const medium = stats?.mediumCalls ?? 0;
   const refs = stats?.claudeCodeReferrals ?? 0;
   const fallbacks = stats?.ollamaFallbacks ?? 0;
-  const total = simple + medium + refs + fallbacks;
+  const total = stats?.totalRequests ?? 0;
   const simplePct = total ? Math.round((simple / total) * 100) : 0;
   const mediumPct = total ? Math.round((medium / total) * 100) : 0;
   const refsPct = total ? Math.round((refs / total) * 100) : 0;
@@ -70,7 +70,7 @@ function StatsPanel({ stats, ollamaOnline, width }) {
       { dimColor: true },
       `  ↳ remote d=${byLabel['OLLAMA-REMOTE-DOWN'] || 0}/t=${byLabel['OLLAMA-REMOTE-TIMEOUT'] || 0}/e=${byLabel['OLLAMA-REMOTE-ERROR'] || 0}`,
     ),
-    h(Text, null, `Total         :${String(total).padStart(5)}`),
+    h(Text, null, `Requests      :${String(total).padStart(5)}`),
     h(Text, null, `Offloaded tkns: ${estimatedTokens.toLocaleString()}`),
     h(
       Text,

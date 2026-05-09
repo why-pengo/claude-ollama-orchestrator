@@ -16,14 +16,17 @@ function log(tag, message) {
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
-const STAT_DEFAULTS = {
-  simpleCalls: 0,
-  mediumCalls: 0,
-  claudeCodeReferrals: 0,
-  ollamaFallbacks: 0,
-  totalOffloadedChars: 0,
-  routes: [],
-};
+function makeDefaultStats() {
+  return {
+    totalRequests: 0,
+    simpleCalls: 0,
+    mediumCalls: 0,
+    claudeCodeReferrals: 0,
+    ollamaFallbacks: 0,
+    totalOffloadedChars: 0,
+    routes: [],
+  };
+}
 
 function loadStats() {
   try {
@@ -33,9 +36,14 @@ function loadStats() {
       data.simpleCalls = data.ollamaCalls;
       delete data.ollamaCalls;
     }
-    return { ...STAT_DEFAULTS, ...data };
+    // seed totalRequests from completed calls if not yet tracked
+    if (!('totalRequests' in data)) {
+      data.totalRequests =
+        (data.simpleCalls || 0) + (data.mediumCalls || 0) + (data.claudeCodeReferrals || 0);
+    }
+    return { ...makeDefaultStats(), ...data };
   } catch {
-    return { ...STAT_DEFAULTS };
+    return makeDefaultStats();
   }
 }
 
@@ -261,6 +269,9 @@ class TaskRouter {
     const complexity = forceComplexity ?? this.assessComplexity(prompt);
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
+    this.stats.totalRequests = (this.stats.totalRequests || 0) + 1;
+    saveStats(this.stats);
+
     if (complexity === 'simple') {
       const result = await this.callOllama(prompt);
       if (result.source !== 'ollama-fallback') return result;
@@ -292,7 +303,7 @@ class TaskRouter {
   }
 
   resetStats() {
-    this.stats = { ...STAT_DEFAULTS };
+    this.stats = makeDefaultStats();
     saveStats(this.stats);
   }
 }

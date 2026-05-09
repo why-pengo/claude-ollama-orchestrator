@@ -11,15 +11,31 @@ const assess = (p) => router.assessComplexityWithReason(p);
 
 describe('assessComplexityWithReason — complex keyword match', () => {
   it('returns complexity complex', () =>
-    assert.equal(assess('Design a REST API').complexity, 'complex'));
+    assert.equal(assess('Architect a microservices system').complexity, 'complex'));
+
+  it('names the matched keyword', () =>
+    assert.ok(assess('Architect a microservices system').reason.includes('"architect"')));
+
+  it('attributes to complex list', () =>
+    assert.ok(assess('Architect a microservices system').reason.includes('complex list')));
+
+  it('picks first matching complex keyword', () => {
+    const { reason } = assess('security review and plan');
+    assert.ok(reason.includes('"security"'));
+  });
+});
+
+describe('assessComplexityWithReason — medium keyword match', () => {
+  it('returns complexity medium', () =>
+    assert.equal(assess('Design a REST API').complexity, 'medium'));
 
   it('names the matched keyword', () =>
     assert.ok(assess('Design a REST API').reason.includes('"design"')));
 
-  it('attributes to complex list', () =>
-    assert.ok(assess('Design a REST API').reason.includes('complex list')));
+  it('attributes to medium list', () =>
+    assert.ok(assess('Design a REST API').reason.includes('medium list')));
 
-  it('picks first matching complex keyword', () => {
+  it('picks first matching medium keyword', () => {
     const { reason } = assess('debug and refactor this module');
     assert.ok(reason.includes('"debug"'));
   });
@@ -50,10 +66,16 @@ describe('assessComplexityWithReason — length fallback', () => {
     assert.ok(assess('What is 2 + 2?').reason.includes('length fallback')));
 });
 
-describe('assessComplexityWithReason — complex beats simple', () => {
+describe('assessComplexityWithReason — complex beats medium beats simple', () => {
   it('"clean up and organise" routes complex (clean wins)', () => {
     const { complexity, reason } = assess('clean up and organise this file');
     assert.equal(complexity, 'complex');
     assert.ok(reason.includes('"clean"'));
+  });
+
+  it('"implement beats list" routes medium (implement wins)', () => {
+    const { complexity, reason } = assess('list steps to implement a login flow');
+    assert.equal(complexity, 'medium');
+    assert.ok(reason.includes('"implement"'));
   });
 });

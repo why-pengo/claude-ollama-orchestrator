@@ -68,9 +68,9 @@ describe('--dry-run: routing decisions', () => {
     assert.ok(stdout.includes('"format"'));
   });
 
-  it('complex keyword routes complex', () => {
+  it('medium keyword routes medium', () => {
     const { stdout } = run('--dry-run', 'refactor this function');
-    assert.ok(stdout.includes('Route: complex'));
+    assert.ok(stdout.includes('Route: medium'));
     assert.ok(stdout.includes('"refactor"'));
   });
 
@@ -93,6 +93,25 @@ describe('--dry-run: routing decisions', () => {
   });
 });
 
+describe('--dry-run: destination line', () => {
+  it('shows destination arrow for simple route', () => {
+    const { stdout } = run('--dry-run', 'format this JSON');
+    assert.ok(stdout.includes('→'));
+    assert.ok(stdout.includes('local Ollama'));
+  });
+
+  it('shows Reason line', () => {
+    const { stdout } = run('--dry-run', 'format this JSON');
+    assert.ok(stdout.includes('Reason:'));
+  });
+
+  it('medium route with no remote shows Claude Code destination', () => {
+    const { stdout } = run('--dry-run', 'refactor this function');
+    assert.ok(stdout.includes('Route: medium'));
+    assert.ok(stdout.includes('Claude Code'));
+  });
+});
+
 describe('--dry-run: prompt display', () => {
   it('shows Prompt line', () => {
     const { stdout } = run('--dry-run', 'format this JSON');
@@ -108,7 +127,9 @@ describe('--dry-run: prompt display', () => {
 describe('--stats: estimated savings output', () => {
   // 4,000,000 chars / 4 = 1,000,000 tokens; 1,000,000 / 1M * $3 = $3.00
   const testStats = {
-    ollamaCalls: 10,
+    totalRequests: 13,
+    simpleCalls: 8,
+    mediumCalls: 2,
     claudeCodeReferrals: 2,
     ollamaFallbacks: 1,
     totalOffloadedChars: 4_000_000,
@@ -124,6 +145,16 @@ describe('--stats: estimated savings output', () => {
   after(() => {
     if (originalStats !== null) fs.writeFileSync(STATS_FILE, originalStats);
     else fs.rmSync(STATS_FILE, { force: true });
+  });
+
+  it('shows Simple calls line', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('Simple calls'));
+  });
+
+  it('shows Medium calls line', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('Medium calls'));
   });
 
   it('shows Offloaded tokens line', () => {

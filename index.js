@@ -31,6 +31,7 @@ function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
   let force = null;
   let filePath = null;
+  let dryRun = false;
 
   // Extract --simple / --complex (positional — must be first)
   if (remaining[0] === '--simple') {
@@ -40,6 +41,13 @@ function parseArgs(rawArgs) {
   if (remaining[0] === '--complex') {
     force = 'complex';
     remaining.shift();
+  }
+
+  // Extract --dry-run (can appear anywhere in remaining args)
+  const dryRunIdx = remaining.indexOf('--dry-run');
+  if (dryRunIdx !== -1) {
+    dryRun = true;
+    remaining.splice(dryRunIdx, 1);
   }
 
   // Extract --file <path> (can appear anywhere in remaining args)
@@ -54,7 +62,7 @@ function parseArgs(rawArgs) {
   }
 
   const promptText = remaining.join(' ').trim();
-  return { force, filePath, promptText };
+  return { force, filePath, promptText, dryRun };
 }
 
 async function main() {
@@ -76,6 +84,10 @@ Usage:
 Force routing:
   node index.js --simple  "Format this JSON ..."
   node index.js --complex "Design a microservice ..."
+
+Preview routing without executing:
+  node index.js --dry-run "clean up and organise this file"
+  node index.js --dry-run --file src/models.py "Extract all class names"
 
 Pass a file without shell substitution (avoids newline collapsing and ARG_MAX limits):
   node index.js --simple --file backend/app/routers/bp.py "Extract all route paths"
@@ -129,9 +141,10 @@ Examples:
     return;
   }
 
-  const { force, filePath, promptText } = parseArgs(args);
+  const { force, filePath, promptText, dryRun } = parseArgs(args);
 
   let prompt = promptText;
+  let fileContentLength = 0;
 
   if (filePath) {
     const resolved = path.resolve(filePath);
@@ -140,13 +153,29 @@ Examples:
       process.exit(1);
     }
     const content = fs.readFileSync(resolved, 'utf8');
+    fileContentLength = content.length;
     prompt = prompt ? `${prompt}\n\n${content}` : content;
-    console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
+    if (!dryRun) console.log(`[FILE] Read ${content.length} chars from ${filePath}`);
   }
 
   if (!prompt.trim()) {
     console.error('[ERROR] No prompt provided.');
     process.exit(1);
+  }
+
+  if (dryRun) {
+    let complexity, reason;
+    if (force) {
+      complexity = force;
+      reason = `forced via --${force} flag`;
+    } else {
+      ({ complexity, reason } = orchestrator.router.assessComplexityWithReason(prompt));
+    }
+    console.log(`\n[DRY-RUN] Route: ${complexity}  ${reason}`);
+    if (filePath) console.log(`File    : ${filePath} (${fileContentLength} chars)`);
+    const preview = promptText.length > 120 ? promptText.slice(0, 120) + '...' : promptText;
+    console.log(`Prompt  : (${promptText.length} chars) ${preview}\n`);
+    return;
   }
 
   try {

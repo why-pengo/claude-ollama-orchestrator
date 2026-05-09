@@ -11,6 +11,7 @@ describe('parseArgs — force flags', () => {
       force: 'simple',
       filePath: null,
       promptText: 'do something',
+      dryRun: false,
     }));
 
   it('--complex sets force', () =>
@@ -18,6 +19,7 @@ describe('parseArgs — force flags', () => {
       force: 'complex',
       filePath: null,
       promptText: 'design an API',
+      dryRun: false,
     }));
 
   it('no flag leaves force null', () =>
@@ -25,6 +27,7 @@ describe('parseArgs — force flags', () => {
       force: null,
       filePath: null,
       promptText: 'just a prompt',
+      dryRun: false,
     }));
 });
 
@@ -34,6 +37,7 @@ describe('parseArgs — --file flag', () => {
       force: null,
       filePath: 'foo.py',
       promptText: 'extract routes',
+      dryRun: false,
     }));
 
   it('--simple before --file', () =>
@@ -41,6 +45,7 @@ describe('parseArgs — --file flag', () => {
       force: 'simple',
       filePath: 'foo.py',
       promptText: 'extract routes',
+      dryRun: false,
     }));
 
   it('--complex before --file', () =>
@@ -48,6 +53,7 @@ describe('parseArgs — --file flag', () => {
       force: 'complex',
       filePath: 'src/app.py',
       promptText: 'refactor this',
+      dryRun: false,
     }));
 
   it('--file mid-args, prompt words joined', () =>
@@ -55,6 +61,7 @@ describe('parseArgs — --file flag', () => {
       force: null,
       filePath: 'notes.md',
       promptText: 'summarise this file',
+      dryRun: false,
     }));
 });
 
@@ -64,6 +71,7 @@ describe('parseArgs — multi-word prompts', () => {
       force: null,
       filePath: null,
       promptText: 'convert this csv to json',
+      dryRun: false,
     }));
 
   it('empty args produce empty promptText', () =>
@@ -71,5 +79,40 @@ describe('parseArgs — multi-word prompts', () => {
       force: null,
       filePath: null,
       promptText: '',
+      dryRun: false,
+    }));
+});
+
+describe('parseArgs — --dry-run flag', () => {
+  it('sets dryRun true', () =>
+    assert.deepEqual(parseArgs(['--dry-run', 'format this']), {
+      force: null,
+      filePath: null,
+      promptText: 'format this',
+      dryRun: true,
+    }));
+
+  it('--dry-run with --simple', () =>
+    assert.deepEqual(parseArgs(['--simple', '--dry-run', 'format this']), {
+      force: 'simple',
+      filePath: null,
+      promptText: 'format this',
+      dryRun: true,
+    }));
+
+  it('--dry-run with --file', () =>
+    assert.deepEqual(parseArgs(['--dry-run', '--file', 'src/app.py', 'extract routes']), {
+      force: null,
+      filePath: 'src/app.py',
+      promptText: 'extract routes',
+      dryRun: true,
+    }));
+
+  it('no --dry-run leaves dryRun false', () =>
+    assert.deepEqual(parseArgs(['format this']), {
+      force: null,
+      filePath: null,
+      promptText: 'format this',
+      dryRun: false,
     }));
 });

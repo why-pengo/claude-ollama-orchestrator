@@ -165,7 +165,7 @@ class TaskRouter {
 
   // ── Complexity assessment ────────────────────────────────────────────────────
   // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
-  assessComplexity(prompt) {
+  assessComplexityWithReason(prompt) {
     const simple = [
       'format',
       'extract',
@@ -195,9 +195,24 @@ class TaskRouter {
     ];
     const lower = prompt.toLowerCase();
 
-    if (complex.some((kw) => lower.includes(kw))) return 'complex';
-    if (simple.some((kw) => lower.includes(kw))) return 'simple';
-    return prompt.length > 500 ? 'complex' : 'simple';
+    const complexMatch = complex.find((kw) => lower.includes(kw));
+    if (complexMatch)
+      return { complexity: 'complex', reason: `matched keyword "${complexMatch}" (complex list)` };
+
+    const simpleMatch = simple.find((kw) => lower.includes(kw));
+    if (simpleMatch)
+      return { complexity: 'simple', reason: `matched keyword "${simpleMatch}" (simple list)` };
+
+    if (prompt.length > 500)
+      return {
+        complexity: 'complex',
+        reason: `prompt length ${prompt.length} > 500 chars (length fallback)`,
+      };
+    return { complexity: 'simple', reason: `no keywords matched, length ≤ 500 (length fallback)` };
+  }
+
+  assessComplexity(prompt) {
+    return this.assessComplexityWithReason(prompt).complexity;
   }
 
   // ── Main router ──────────────────────────────────────────────────────────────

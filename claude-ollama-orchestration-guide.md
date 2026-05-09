@@ -158,7 +158,7 @@ class TaskRouter {
   // ── Complexity assessment ────────────────────────────────────────────────────
   // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
   assessComplexity(prompt) {
-    const simple  = ['format','clean','extract','convert','parse','organise',
+    const simple  = ['format','extract','convert','parse','organise',
                      'organize','list','template','rename','sort'];
     const complex = ['design','architect','optimise','optimize','debug','reason',
                      'plan','refactor','security','tradeoff','implement','explain'];

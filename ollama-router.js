@@ -2,11 +2,11 @@
 // Requires Node.js 18+ (native fetch — no npm install needed)
 // Routes simple tasks to local Ollama; complex tasks are flagged for Claude Code.
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const STATS_FILE = path.join(__dirname, 'orchestrator-stats.json');
-const LOG_FILE   = path.join(__dirname, 'orchestrator.log');
+const LOG_FILE = path.join(__dirname, 'orchestrator.log');
 
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
@@ -28,9 +28,9 @@ function saveStats(stats) {
 
 class TaskRouter {
   constructor(ollamaUrl = 'http://localhost:11434') {
-    this.ollamaUrl   = ollamaUrl;
+    this.ollamaUrl = ollamaUrl;
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
-    this.stats       = loadStats();
+    this.stats = loadStats();
   }
 
   // ── Local Ollama ─────────────────────────────────────────────────────────────
@@ -39,15 +39,15 @@ class TaskRouter {
     log('OLLAMA', `Sending ${prompt.length} chars to ${this.ollamaModel} (streaming)`);
 
     const res = await fetch(`${this.ollamaUrl}/api/generate`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
+      body: JSON.stringify({ model: this.ollamaModel, prompt, stream: true }),
     });
     if (!res.ok) throw new Error(`Ollama error: ${res.statusText}`);
 
-    const reader  = res.body.getReader();
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer       = '';
+    let buffer = '';
     let fullResponse = '';
 
     process.stdout.write('\n');
@@ -77,7 +77,12 @@ class TaskRouter {
     log('OLLAMA', `Done in ${elapsed}ms — ${fullResponse.length} chars`);
 
     this.stats.ollamaCalls++;
-    this.stats.routes.push({ ts: new Date().toISOString(), route: 'ollama', model: this.ollamaModel, ms: elapsed });
+    this.stats.routes.push({
+      ts: new Date().toISOString(),
+      route: 'ollama',
+      model: this.ollamaModel,
+      ms: elapsed,
+    });
     saveStats(this.stats);
 
     return { source: 'ollama', model: this.ollamaModel, text: fullResponse, streamed: true };
@@ -91,22 +96,45 @@ class TaskRouter {
     saveStats(this.stats);
     return {
       source: 'claude-code',
-      model:  'n/a',
-      text:   `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
+      model: 'n/a',
+      text: `This task needs Claude Code.\n\nCopy this prompt into your Claude Code session:\n\n---\n${prompt}\n---`,
     };
   }
 
   // ── Complexity assessment ────────────────────────────────────────────────────
   // Tune these keyword lists as you go — use --simple to override when auto-routing misses.
   assessComplexity(prompt) {
-    const simple  = ['format','extract','convert','parse','organise',
-                     'organize','list','template','rename','sort'];
-    const complex = ['design','architect','optimise','optimize','debug','reason',
-                     'plan','refactor','security','tradeoff','implement','explain','clean'];
-    const lower   = prompt.toLowerCase();
+    const simple = [
+      'format',
+      'extract',
+      'convert',
+      'parse',
+      'organise',
+      'organize',
+      'list',
+      'template',
+      'rename',
+      'sort',
+    ];
+    const complex = [
+      'design',
+      'architect',
+      'optimise',
+      'optimize',
+      'debug',
+      'reason',
+      'plan',
+      'refactor',
+      'security',
+      'tradeoff',
+      'implement',
+      'explain',
+      'clean',
+    ];
+    const lower = prompt.toLowerCase();
 
-    if (complex.some(kw => lower.includes(kw))) return 'complex';
-    if (simple.some(kw =>  lower.includes(kw))) return 'simple';
+    if (complex.some((kw) => lower.includes(kw))) return 'complex';
+    if (simple.some((kw) => lower.includes(kw))) return 'simple';
     return prompt.length > 500 ? 'complex' : 'simple';
   }
 
@@ -115,12 +143,14 @@ class TaskRouter {
     const complexity = forceComplexity ?? this.assessComplexity(prompt);
     log('ROUTER', `complexity=${complexity}${forceComplexity ? ' (forced)' : ' (auto)'}`);
 
-    if (complexity === 'simple')  return this.callOllama(prompt);
+    if (complexity === 'simple') return this.callOllama(prompt);
     if (complexity === 'complex') return this.referToClaudeCode(prompt);
     throw new Error(`Unknown complexity: ${complexity}`);
   }
 
-  getStats()   { return { ...this.stats }; }
+  getStats() {
+    return { ...this.stats };
+  }
   resetStats() {
     this.stats = { ollamaCalls: 0, claudeCodeReferrals: 0, routes: [] };
     saveStats(this.stats);

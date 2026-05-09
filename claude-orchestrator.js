@@ -4,14 +4,14 @@ const TaskRouter = require('./ollama-router');
 
 class ClaudeOrchestrator {
   constructor(skills = {}, rules = {}) {
-    this.router  = new TaskRouter();
-    this.skills  = skills;
-    this.rules   = rules;
+    this.router = new TaskRouter();
+    this.skills = skills;
+    this.rules = rules;
     this.history = [];
   }
 
   applySkills(prompt) {
-    let out     = prompt;
+    let out = prompt;
     let applied = [];
     for (const [keyword, skillPrompt] of Object.entries(this.skills)) {
       if (prompt.toLowerCase().includes(keyword)) {
@@ -20,8 +20,7 @@ class ClaudeOrchestrator {
       }
     }
     if (applied.length) {
-      const { log } = require('./ollama-router'); // shared logger not exported — inline it
-      const fs   = require('fs');
+      const fs = require('fs');
       const line = `[${new Date().toISOString()}] [SKILLS] Applied: ${applied.join(', ')}`;
       console.log(line);
       fs.appendFileSync(require('path').join(__dirname, 'orchestrator.log'), line + '\n');
@@ -35,7 +34,7 @@ class ClaudeOrchestrator {
   }
 
   async process(userRequest, forceComplexity = null) {
-    const fs   = require('fs');
+    const fs = require('fs');
     const path = require('path');
     const line = `[${new Date().toISOString()}] [REQUEST] ${userRequest.slice(0, 120)}${userRequest.length > 120 ? '…' : ''}`;
     console.log('\n' + '='.repeat(60));
@@ -43,7 +42,7 @@ class ClaudeOrchestrator {
     fs.appendFileSync(path.join(__dirname, 'orchestrator.log'), line + '\n');
 
     let prompt = this.applySkills(userRequest);
-    prompt     = this.enforceRules(prompt);
+    prompt = this.enforceRules(prompt);
 
     const result = await this.router.route(prompt, forceComplexity);
 

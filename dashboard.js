@@ -1,8 +1,8 @@
 // dashboard.js — full-screen TUI dashboard for the orchestrator.
 // Renders three tier cards + log feed using ink v7 + React 19. No JSX.
 
-import React, { useState, useEffect, useRef } from 'react';
-import { render, Box, Text, useInput, useApp, useWindowSize } from 'ink';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { render, Box, Text, useInput, useApp, useWindowSize, useStdout } from 'ink';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,20 +29,9 @@ function statusDot(online) {
 }
 
 // ── Tier 1: Local Ollama ──────────────────────────────────────────────────────
-function LocalTierCard({ stats, online }) {
+function LocalTierCard({ calls, pct, avg, fb, online }) {
   const model = process.env.OLLAMA_MODEL || 'mistral';
-  const routes = stats?.routes || [];
-  const calls = stats?.simpleCalls ?? 0;
-  const total = stats?.totalRequests ?? 0;
-  const pct = total ? Math.round((calls / total) * 100) : 0;
-  const avg = avgMs(routes, 'ollama');
-  const fb = routes.filter((r) => r.route === 'ollama-fallback');
-  const fbl = fb.reduce((a, r) => {
-    a[r.label] = (a[r.label] || 0) + 1;
-    return a;
-  }, {});
-  const fbTotal =
-    (fbl['OLLAMA-DOWN'] || 0) + (fbl['OLLAMA-TIMEOUT'] || 0) + (fbl['OLLAMA-ERROR'] || 0);
+  const fbTotal = (fb.down || 0) + (fb.timeout || 0) + (fb.error || 0);
   const { color, char, label } = statusDot(online);
   const borderColor = online ? 'green' : 'cyan';
 
@@ -56,32 +45,15 @@ function LocalTierCard({ stats, online }) {
     h(Text, null, `Calls     :${String(calls).padStart(5)}  (${pct}%)`),
     h(Text, null, `Avg ms    : ${avg != null ? avg.toLocaleString() : '—'}`),
     h(Text, null, `Fallbacks :${String(fbTotal).padStart(5)}`),
-    h(
-      Text,
-      { dimColor: true },
-      `  d=${fbl['OLLAMA-DOWN'] || 0} / t=${fbl['OLLAMA-TIMEOUT'] || 0} / e=${fbl['OLLAMA-ERROR'] || 0}`,
-    ),
+    h(Text, { dimColor: true }, `  d=${fb.down || 0} / t=${fb.timeout || 0} / e=${fb.error || 0}`),
   );
 }
 
 // ── Tier 2: Remote Ollama ─────────────────────────────────────────────────────
-function RemoteTierCard({ stats, online }) {
+function RemoteTierCard({ calls, pct, avg, fb, online }) {
   const model = process.env.OLLAMA_REMOTE_MODEL || 'qwen2.5:32b';
   const host = (REMOTE_URL || '').replace(/^https?:\/\//, '');
-  const routes = stats?.routes || [];
-  const calls = stats?.mediumCalls ?? 0;
-  const total = stats?.totalRequests ?? 0;
-  const pct = total ? Math.round((calls / total) * 100) : 0;
-  const avg = avgMs(routes, 'ollama-remote');
-  const fb = routes.filter((r) => r.route === 'ollama-fallback');
-  const fbl = fb.reduce((a, r) => {
-    a[r.label] = (a[r.label] || 0) + 1;
-    return a;
-  }, {});
-  const fbTotal =
-    (fbl['OLLAMA-REMOTE-DOWN'] || 0) +
-    (fbl['OLLAMA-REMOTE-TIMEOUT'] || 0) +
-    (fbl['OLLAMA-REMOTE-ERROR'] || 0);
+  const fbTotal = (fb.down || 0) + (fb.timeout || 0) + (fb.error || 0);
   const { color, char, label } = statusDot(online);
   const borderColor = !REMOTE_URL ? 'gray' : online ? 'magenta' : 'cyan';
 
@@ -114,20 +86,12 @@ function RemoteTierCard({ stats, online }) {
     h(Text, null, `Calls     :${String(calls).padStart(5)}  (${pct}%)`),
     h(Text, null, `Avg ms    : ${avg != null ? avg.toLocaleString() : '—'}`),
     h(Text, null, `Fallbacks :${String(fbTotal).padStart(5)}`),
-    h(
-      Text,
-      { dimColor: true },
-      `  d=${fbl['OLLAMA-REMOTE-DOWN'] || 0} / t=${fbl['OLLAMA-REMOTE-TIMEOUT'] || 0} / e=${fbl['OLLAMA-REMOTE-ERROR'] || 0}`,
-    ),
+    h(Text, { dimColor: true }, `  d=${fb.down || 0} / t=${fb.timeout || 0} / e=${fb.error || 0}`),
   );
 }
 
 // ── Tier 3: Claude Code ───────────────────────────────────────────────────────
-function ClaudeCodeTierCard({ stats }) {
-  const refs = stats?.claudeCodeReferrals ?? 0;
-  const total = stats?.totalRequests ?? 0;
-  const pct = total ? Math.round((refs / total) * 100) : 0;
-
+function ClaudeCodeTierCard({ refs, pct }) {
   return h(
     Box,
     {
@@ -190,14 +154,22 @@ function Dashboard() {
   const [remoteOnline, setRemoteOnline] = useState(null);
   const { exit } = useApp();
   const { columns: cols = 80, rows = 24 } = useWindowSize();
+  const { stdout: inkStdout } = useStdout();
   const localAbortRef = useRef(null);
   const remoteAbortRef = useRef(null);
 
-  // enter alt-screen + hide cursor on mount; restore on exit
+  // enter alt-screen + hide cursor on mount; restore on React unmount and process exit
   useEffect(() => {
-    process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
-    return () => process.stdout.write('\x1b[?1049l\x1b[?25h');
-  }, []);
+    const out = inkStdout ?? process.stdout;
+    if (!out.isTTY) return;
+    const restore = () => out.write('\x1b[?1049l\x1b[?25h');
+    out.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
+    process.on('exit', restore);
+    return () => {
+      process.off('exit', restore);
+      restore();
+    };
+  }, [inkStdout]);
 
   useEffect(() => {
     function tick() {
@@ -266,6 +238,41 @@ function Dashboard() {
     stats?.totalOffloadedChars ?? 0,
   );
 
+  // Compute all route-derived aggregates once per stats update
+  const derived = useMemo(() => {
+    const routes = stats?.routes || [];
+    const fbl = routes
+      .filter((r) => r.route === 'ollama-fallback')
+      .reduce((a, r) => {
+        a[r.label] = (a[r.label] || 0) + 1;
+        return a;
+      }, {});
+    const t = stats?.totalRequests ?? 0;
+    const simple = stats?.simpleCalls ?? 0;
+    const medium = stats?.mediumCalls ?? 0;
+    const refs = stats?.claudeCodeReferrals ?? 0;
+    return {
+      localAvg: avgMs(routes, 'ollama'),
+      remoteAvg: avgMs(routes, 'ollama-remote'),
+      localFb: {
+        down: fbl['OLLAMA-DOWN'],
+        timeout: fbl['OLLAMA-TIMEOUT'],
+        error: fbl['OLLAMA-ERROR'],
+      },
+      remoteFb: {
+        down: fbl['OLLAMA-REMOTE-DOWN'],
+        timeout: fbl['OLLAMA-REMOTE-TIMEOUT'],
+        error: fbl['OLLAMA-REMOTE-ERROR'],
+      },
+      simpleCalls: simple,
+      simplePct: t ? Math.round((simple / t) * 100) : 0,
+      mediumCalls: medium,
+      mediumPct: t ? Math.round((medium / t) * 100) : 0,
+      refs,
+      refsPct: t ? Math.round((refs / t) * 100) : 0,
+    };
+  }, [stats]);
+
   // log panel gets whatever rows remain after tier cards (~12), summary (1), footer (1), borders
   const logMaxLines = Math.max(4, rows - 16);
   const maxLineLen = Math.max(20, cols - 6);
@@ -276,9 +283,21 @@ function Dashboard() {
     h(
       Box,
       { flexDirection: 'row', width: cols },
-      h(LocalTierCard, { stats, online: localOnline }),
-      h(RemoteTierCard, { stats, online: remoteOnline }),
-      h(ClaudeCodeTierCard, { stats }),
+      h(LocalTierCard, {
+        calls: derived.simpleCalls,
+        pct: derived.simplePct,
+        avg: derived.localAvg,
+        fb: derived.localFb,
+        online: localOnline,
+      }),
+      h(RemoteTierCard, {
+        calls: derived.mediumCalls,
+        pct: derived.mediumPct,
+        avg: derived.remoteAvg,
+        fb: derived.remoteFb,
+        online: remoteOnline,
+      }),
+      h(ClaudeCodeTierCard, { refs: derived.refs, pct: derived.refsPct }),
     ),
     h(
       Box,

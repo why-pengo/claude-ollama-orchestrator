@@ -92,9 +92,7 @@ export function getTallies() {
 }
 
 export function getRecentRoutes(n = 5) {
-  return db()
-    .prepare('SELECT ts, route, ms, model FROM requests ORDER BY ts DESC LIMIT ?')
-    .all(n);
+  return db().prepare('SELECT ts, route, ms, model FROM requests ORDER BY ts DESC LIMIT ?').all(n);
 }
 
 export function resetDb() {

@@ -162,7 +162,7 @@ function HistoryPanel({ tallies }) {
     const l = String(m['ollama'] ?? 0).padStart(4);
     const r = String(m['ollama-remote'] ?? 0).padStart(4);
     const c = String(m['claude-code'] ?? 0).padStart(4);
-    const t = ((m['ollama'] ?? 0) + (m['ollama-remote'] ?? 0) + (m['claude-code'] ?? 0));
+    const t = (m['ollama'] ?? 0) + (m['ollama-remote'] ?? 0) + (m['claude-code'] ?? 0);
     return h(
       Box,
       { gap: 1 },
@@ -178,13 +178,19 @@ function HistoryPanel({ tallies }) {
     { flexDirection: 'column', borderStyle: 'round', borderColor: 'blue', paddingX: 1 },
     h(Text, { bold: true, color: 'blue' }, 'Usage history'),
     h(Text, null, ''),
-    h(Box, { gap: 2 },
-      h(Box, { flexDirection: 'column' },
+    h(
+      Box,
+      { gap: 2 },
+      h(
+        Box,
+        { flexDirection: 'column' },
         h(Text, { dimColor: true }, 'Today      '),
         h(Text, { dimColor: true }, 'This week  '),
         h(Text, { dimColor: true }, 'This month '),
       ),
-      h(Box, { flexDirection: 'column' },
+      h(
+        Box,
+        { flexDirection: 'column' },
         fmt(tallies.today),
         fmt(tallies.week),
         fmt(tallies.month),
@@ -380,7 +386,11 @@ function Dashboard() {
       h(Text, { bold: true }, '← →'),
       h(Text, { dimColor: true }, ' to change  ·  '),
       h(Text, null, `${REFRESH_OPTIONS[refreshIdx] / 1000}s`),
-      h(Text, { dimColor: true }, `  [${REFRESH_OPTIONS.map((ms, i) => (i === refreshIdx ? `[${ms / 1000}]` : `${ms / 1000}`)).join(' ')}]  ·  `),
+      h(
+        Text,
+        { dimColor: true },
+        `  [${REFRESH_OPTIONS.map((ms, i) => (i === refreshIdx ? `[${ms / 1000}]` : `${ms / 1000}`)).join(' ')}]  ·  `,
+      ),
       h(Text, { bold: true }, 'q'),
       h(Text, { dimColor: true }, ' or '),
       h(Text, { bold: true }, 'Ctrl-C'),

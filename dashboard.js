@@ -1,8 +1,8 @@
-// dashboard.js — live TUI dashboard for the orchestrator.
-// Renders stats + log feed using ink v7 + React 19. No JSX — uses React.createElement.
+// dashboard.js — full-screen TUI dashboard for the orchestrator.
+// Renders three tier cards + log feed using ink v7 + React 19. No JSX.
 
 import React, { useState, useEffect, useRef } from 'react';
-import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
+import { render, Box, Text, useInput, useApp, useWindowSize } from 'ink';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,87 +12,146 @@ const h = React.createElement;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
 const LOG_FILE = join(__dirname, 'orchestrator.log');
-const OLLAMA_URL = `http://localhost:${process.env.OLLAMA_PORT || 11434}`;
+const LOCAL_URL = `http://localhost:${process.env.OLLAMA_PORT || 11434}`;
+const REMOTE_URL = process.env.OLLAMA_REMOTE_HOST || null;
 
-// ── Stats panel ───────────────────────────────────────────────────────────────
-function StatsPanel({ stats, ollamaOnline, width }) {
+function avgMs(routes, routeType) {
+  const matching = (routes || []).filter((r) => r.route === routeType && r.ms > 0);
+  if (!matching.length) return null;
+  return Math.round(matching.reduce((s, r) => s + r.ms, 0) / matching.length);
+}
+
+function statusDot(online) {
+  if (online === null) return { color: 'yellow', char: '◌', label: 'checking…' };
+  return online
+    ? { color: 'green', char: '●', label: 'online' }
+    : { color: 'red', char: '○', label: 'offline' };
+}
+
+// ── Tier 1: Local Ollama ──────────────────────────────────────────────────────
+function LocalTierCard({ stats, online }) {
   const model = process.env.OLLAMA_MODEL || 'mistral';
-  const simple = stats?.simpleCalls ?? 0;
-  const medium = stats?.mediumCalls ?? 0;
-  const refs = stats?.claudeCodeReferrals ?? 0;
-  const fallbacks = stats?.ollamaFallbacks ?? 0;
+  const routes = stats?.routes || [];
+  const calls = stats?.simpleCalls ?? 0;
   const total = stats?.totalRequests ?? 0;
-  const simplePct = total ? Math.round((simple / total) * 100) : 0;
-  const mediumPct = total ? Math.round((medium / total) * 100) : 0;
-  const refsPct = total ? Math.round((refs / total) * 100) : 0;
-  const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
-    stats?.totalOffloadedChars ?? 0,
-  );
-
-  const fbRoutes = (stats?.routes || []).filter((r) => r.route === 'ollama-fallback');
-  const byLabel = fbRoutes.reduce((acc, r) => {
-    acc[r.label] = (acc[r.label] || 0) + 1;
-    return acc;
+  const pct = total ? Math.round((calls / total) * 100) : 0;
+  const avg = avgMs(routes, 'ollama');
+  const fb = routes.filter((r) => r.route === 'ollama-fallback');
+  const fbl = fb.reduce((a, r) => {
+    a[r.label] = (a[r.label] || 0) + 1;
+    return a;
   }, {});
+  const fbTotal =
+    (fbl['OLLAMA-DOWN'] || 0) + (fbl['OLLAMA-TIMEOUT'] || 0) + (fbl['OLLAMA-ERROR'] || 0);
+  const { color, char, label } = statusDot(online);
+  const borderColor = online ? 'green' : 'cyan';
 
-  const last5 = (stats?.routes || []).slice(-5).reverse();
+  return h(
+    Box,
+    { flexDirection: 'column', flexGrow: 1, borderStyle: 'round', borderColor, paddingX: 1 },
+    h(Text, { bold: true, color: 'green' }, 'Tier 1 · Local Ollama'),
+    h(Text, { dimColor: true }, `Model : ${model}`),
+    h(Text, null, 'Status: ', h(Text, { color }, char), ` ${label}`),
+    h(Text, null, ''),
+    h(Text, null, `Calls     :${String(calls).padStart(5)}  (${pct}%)`),
+    h(Text, null, `Avg ms    : ${avg != null ? avg.toLocaleString() : '—'}`),
+    h(Text, null, `Fallbacks :${String(fbTotal).padStart(5)}`),
+    h(
+      Text,
+      { dimColor: true },
+      `  d=${fbl['OLLAMA-DOWN'] || 0} / t=${fbl['OLLAMA-TIMEOUT'] || 0} / e=${fbl['OLLAMA-ERROR'] || 0}`,
+    ),
+  );
+}
 
-  const dotColor = ollamaOnline === null ? 'yellow' : ollamaOnline ? 'green' : 'red';
-  const dotChar = ollamaOnline ? '●' : '○';
-  const statusLabel = ollamaOnline === null ? 'checking…' : ollamaOnline ? 'online' : 'offline';
+// ── Tier 2: Remote Ollama ─────────────────────────────────────────────────────
+function RemoteTierCard({ stats, online }) {
+  const model = process.env.OLLAMA_REMOTE_MODEL || 'qwen2.5:32b';
+  const host = (REMOTE_URL || '').replace(/^https?:\/\//, '');
+  const routes = stats?.routes || [];
+  const calls = stats?.mediumCalls ?? 0;
+  const total = stats?.totalRequests ?? 0;
+  const pct = total ? Math.round((calls / total) * 100) : 0;
+  const avg = avgMs(routes, 'ollama-remote');
+  const fb = routes.filter((r) => r.route === 'ollama-fallback');
+  const fbl = fb.reduce((a, r) => {
+    a[r.label] = (a[r.label] || 0) + 1;
+    return a;
+  }, {});
+  const fbTotal =
+    (fbl['OLLAMA-REMOTE-DOWN'] || 0) +
+    (fbl['OLLAMA-REMOTE-TIMEOUT'] || 0) +
+    (fbl['OLLAMA-REMOTE-ERROR'] || 0);
+  const { color, char, label } = statusDot(online);
+  const borderColor = !REMOTE_URL ? 'gray' : online ? 'magenta' : 'cyan';
+
+  if (!REMOTE_URL) {
+    return h(
+      Box,
+      {
+        flexDirection: 'column',
+        flexGrow: 1,
+        borderStyle: 'round',
+        borderColor: 'gray',
+        paddingX: 1,
+      },
+      h(Text, { bold: true, color: 'gray' }, 'Tier 2 · Remote Ollama'),
+      h(Text, null, ''),
+      h(Text, { dimColor: true }, 'Not configured'),
+      h(Text, { dimColor: true }, 'Set OLLAMA_REMOTE_HOST'),
+      h(Text, { dimColor: true }, 'to enable tier 2'),
+    );
+  }
+
+  return h(
+    Box,
+    { flexDirection: 'column', flexGrow: 1, borderStyle: 'round', borderColor, paddingX: 1 },
+    h(Text, { bold: true, color: 'magenta' }, 'Tier 2 · Remote Ollama'),
+    h(Text, { dimColor: true }, `Host  : ${host}`),
+    h(Text, { dimColor: true }, `Model : ${model}`),
+    h(Text, null, 'Status: ', h(Text, { color }, char), ` ${label}`),
+    h(Text, null, ''),
+    h(Text, null, `Calls     :${String(calls).padStart(5)}  (${pct}%)`),
+    h(Text, null, `Avg ms    : ${avg != null ? avg.toLocaleString() : '—'}`),
+    h(Text, null, `Fallbacks :${String(fbTotal).padStart(5)}`),
+    h(
+      Text,
+      { dimColor: true },
+      `  d=${fbl['OLLAMA-REMOTE-DOWN'] || 0} / t=${fbl['OLLAMA-REMOTE-TIMEOUT'] || 0} / e=${fbl['OLLAMA-REMOTE-ERROR'] || 0}`,
+    ),
+  );
+}
+
+// ── Tier 3: Claude Code ───────────────────────────────────────────────────────
+function ClaudeCodeTierCard({ stats }) {
+  const refs = stats?.claudeCodeReferrals ?? 0;
+  const total = stats?.totalRequests ?? 0;
+  const pct = total ? Math.round((refs / total) * 100) : 0;
 
   return h(
     Box,
     {
       flexDirection: 'column',
-      width,
+      flexGrow: 1,
       borderStyle: 'round',
-      borderColor: 'cyan',
+      borderColor: 'yellow',
       paddingX: 1,
-      flexShrink: 0,
     },
-    h(Text, { bold: true, color: 'cyan' }, 'Stats'),
+    h(Text, { bold: true, color: 'yellow' }, 'Tier 3 · Claude Code'),
+    h(Text, { dimColor: true }, 'Always available'),
+    h(Text, null, 'Status: ', h(Text, { color: 'green' }, '●'), ' ready'),
     h(Text, null, ''),
-    h(Text, null, `Model  : ${model}`),
-    h(Text, null, 'Ollama : ', h(Text, { color: dotColor }, dotChar), ` ${statusLabel}`),
+    h(Text, null, `Referrals :${String(refs).padStart(5)}  (${pct}%)`),
     h(Text, null, ''),
-    h(Text, null, `Simple calls  :${String(simple).padStart(5)}  (${simplePct}%)`),
-    h(Text, null, `Medium calls  :${String(medium).padStart(5)}  (${mediumPct}%)`),
-    h(Text, null, `Claude refers :${String(refs).padStart(5)}  (${refsPct}%)`),
-    h(Text, null, `Fallbacks     :${String(fallbacks).padStart(5)}`),
-    h(
-      Text,
-      { dimColor: true },
-      `  ↳ local  d=${byLabel['OLLAMA-DOWN'] || 0}/t=${byLabel['OLLAMA-TIMEOUT'] || 0}/e=${byLabel['OLLAMA-ERROR'] || 0}`,
-    ),
-    h(
-      Text,
-      { dimColor: true },
-      `  ↳ remote d=${byLabel['OLLAMA-REMOTE-DOWN'] || 0}/t=${byLabel['OLLAMA-REMOTE-TIMEOUT'] || 0}/e=${byLabel['OLLAMA-REMOTE-ERROR'] || 0}`,
-    ),
-    h(Text, null, `Requests      :${String(total).padStart(5)}`),
-    h(Text, null, `Offloaded tkns: ${estimatedTokens.toLocaleString()}`),
-    h(
-      Text,
-      { color: 'green' },
-      `Est. savings  : ~$${estimatedSavings} ($${SAVINGS_RATE_PER_M_TOKENS}/M)`,
-    ),
-    h(Text, null, ''),
-    h(Text, { bold: true }, 'Last 5 routes:'),
-    ...(last5.length === 0
-      ? [h(Text, { dimColor: true }, '  (none yet)')]
-      : last5.map((r, i) =>
-          h(
-            Text,
-            { key: i },
-            `  ${r.ts.slice(11, 19)}  ${r.route.padEnd(15)} ${r.ms != null ? `${r.ms}ms` : ''}`,
-          ),
-        )),
+    h(Text, { dimColor: true }, 'Handles complex tasks'),
+    h(Text, { dimColor: true }, 'and offline fallback'),
   );
 }
 
 // ── Log feed panel ────────────────────────────────────────────────────────────
-function LogPanel({ lines, maxLineLen }) {
+function LogPanel({ lines, maxLines, maxLineLen }) {
+  const visible = lines.slice(0, maxLines);
+
   return h(
     Box,
     {
@@ -104,9 +163,9 @@ function LogPanel({ lines, maxLineLen }) {
     },
     h(Text, { bold: true, color: 'cyan' }, 'Log feed'),
     h(Text, null, ''),
-    ...(lines.length === 0
+    ...(visible.length === 0
       ? [h(Text, { dimColor: true }, 'Waiting for activity…')]
-      : lines.map((line, i) => {
+      : visible.map((line, i) => {
           const tagMatch = line.match(/\[[A-Z][A-Z0-9-]*\]/g);
           const tag = tagMatch?.[0]?.slice(1, -1) || '';
           let color = 'white';
@@ -127,10 +186,18 @@ function LogPanel({ lines, maxLineLen }) {
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [logLines, setLogLines] = useState([]);
-  const [ollamaOnline, setOllamaOnline] = useState(null);
+  const [localOnline, setLocalOnline] = useState(null);
+  const [remoteOnline, setRemoteOnline] = useState(null);
   const { exit } = useApp();
-  const { stdout } = useStdout();
-  const ollamaAbortRef = useRef(null);
+  const { columns: cols = 80, rows = 24 } = useWindowSize();
+  const localAbortRef = useRef(null);
+  const remoteAbortRef = useRef(null);
+
+  // enter alt-screen + hide cursor on mount; restore on exit
+  useEffect(() => {
+    process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
+    return () => process.stdout.write('\x1b[?1049l\x1b[?25h');
+  }, []);
 
   useEffect(() => {
     function tick() {
@@ -141,7 +208,7 @@ function Dashboard() {
       }
       try {
         const stat = fs.statSync(LOG_FILE);
-        const tail = 8192;
+        const tail = 16384;
         const offset = Math.max(0, stat.size - tail);
         const buf = Buffer.alloc(Math.min(tail, stat.size));
         const fd = fs.openSync(LOG_FILE, 'r');
@@ -151,27 +218,42 @@ function Dashboard() {
           .toString('utf8')
           .split('\n')
           .filter((l) => l.includes('['));
-        setLogLines(tagged.slice(-20).reverse());
+        setLogLines(tagged.slice(-60).reverse());
       } catch {
         setLogLines([]);
       }
-      ollamaAbortRef.current?.abort();
-      const ac = new AbortController();
-      ollamaAbortRef.current = ac;
-      fetch(`${OLLAMA_URL}/api/tags`, {
-        signal: AbortSignal.any([ac.signal, AbortSignal.timeout(900)]),
+
+      localAbortRef.current?.abort();
+      const lac = new AbortController();
+      localAbortRef.current = lac;
+      fetch(`${LOCAL_URL}/api/tags`, {
+        signal: AbortSignal.any([lac.signal, AbortSignal.timeout(900)]),
       })
-        .then((r) => setOllamaOnline(r.ok))
-        .catch((_err) => {
-          if (!ac.signal.aborted) setOllamaOnline(false);
+        .then((r) => setLocalOnline(r.ok))
+        .catch(() => {
+          if (!lac.signal.aborted) setLocalOnline(false);
         });
+
+      if (REMOTE_URL) {
+        remoteAbortRef.current?.abort();
+        const rac = new AbortController();
+        remoteAbortRef.current = rac;
+        fetch(`${REMOTE_URL}/api/tags`, {
+          signal: AbortSignal.any([rac.signal, AbortSignal.timeout(900)]),
+        })
+          .then((r) => setRemoteOnline(r.ok))
+          .catch(() => {
+            if (!rac.signal.aborted) setRemoteOnline(false);
+          });
+      }
     }
 
     tick();
     const id = setInterval(tick, 1000);
     return () => {
       clearInterval(id);
-      ollamaAbortRef.current?.abort();
+      localAbortRef.current?.abort();
+      remoteAbortRef.current?.abort();
     };
   }, []);
 
@@ -179,23 +261,38 @@ function Dashboard() {
     if (input === 'q') exit();
   });
 
-  const cols = stdout?.columns ?? 80;
-  const leftWidth = Math.max(36, Math.floor(cols * 0.35));
-  const rightMaxLen = Math.max(20, cols - leftWidth - 6);
+  const total = stats?.totalRequests ?? 0;
+  const { tokens: estTokens, savings: estSavings } = estimateSavings(
+    stats?.totalOffloadedChars ?? 0,
+  );
+
+  // log panel gets whatever rows remain after tier cards (~12), summary (1), footer (1), borders
+  const logMaxLines = Math.max(4, rows - 16);
+  const maxLineLen = Math.max(20, cols - 6);
 
   return h(
     Box,
-    { flexDirection: 'column' },
+    { flexDirection: 'column', width: cols },
     h(
       Box,
-      { flexDirection: 'row' },
-      h(StatsPanel, { stats, ollamaOnline, width: leftWidth }),
-      h(LogPanel, { lines: logLines, maxLineLen: rightMaxLen }),
+      { flexDirection: 'row', width: cols },
+      h(LocalTierCard, { stats, online: localOnline }),
+      h(RemoteTierCard, { stats, online: remoteOnline }),
+      h(ClaudeCodeTierCard, { stats }),
     ),
     h(
       Box,
-      null,
-      h(Text, { dimColor: true }, '  Refreshes every 1s · '),
+      { paddingX: 2 },
+      h(Text, null, `Total: ${total} requests  ·  `),
+      h(Text, null, `Offloaded: ${estTokens.toLocaleString()} tokens  ·  `),
+      h(Text, { color: 'green' }, `~$${estSavings} saved`),
+      h(Text, { dimColor: true }, `  ($${SAVINGS_RATE_PER_M_TOKENS}/M)`),
+    ),
+    h(LogPanel, { lines: logLines, maxLines: logMaxLines, maxLineLen }),
+    h(
+      Box,
+      { paddingX: 2 },
+      h(Text, { dimColor: true }, 'Refreshes every 1s  ·  '),
       h(Text, { bold: true }, 'q'),
       h(Text, { dimColor: true }, ' or '),
       h(Text, { bold: true }, 'Ctrl-C'),

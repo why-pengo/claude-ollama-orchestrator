@@ -73,3 +73,38 @@ describe('assessComplexity — known substring edge cases', () => {
   it('"planets" matches "plan" and routes complex', () =>
     assert.equal(assess('List the planets in the solar system'), 'complex'));
 });
+
+describe('assessComplexity — simple-keyword size escalation', () => {
+  const LIMIT = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT ?? 20_000);
+  const atLimit = `Extract values ${'x'.repeat(LIMIT - 'Extract values '.length)}`;
+  const overLimit = atLimit + 'x';
+
+  it('simple keyword at size limit stays simple', () => assert.equal(assess(atLimit), 'simple'));
+  it('simple keyword one char over limit escalates to medium', () =>
+    assert.equal(assess(overLimit), 'medium'));
+  it('all simple keywords escalate when oversized', () => {
+    const big = 'x'.repeat(LIMIT + 1);
+    for (const kw of [
+      'format',
+      'extract',
+      'convert',
+      'parse',
+      'organise',
+      'organize',
+      'list',
+      'template',
+      'rename',
+      'sort',
+    ]) {
+      assert.equal(assess(`${kw} ${big}`), 'medium', `expected medium for keyword "${kw}"`);
+    }
+  });
+  it('complex keyword still wins over size escalation', () =>
+    assert.equal(assess(`refactor ${'x'.repeat(LIMIT + 1)}`), 'complex'));
+  it('medium keyword still wins over size escalation', () =>
+    assert.equal(assess(`explain ${'x'.repeat(LIMIT + 1)}`), 'medium'));
+  it('reason string includes escalation message', () => {
+    const { reason } = router.assessComplexityWithReason(overLimit);
+    assert.ok(reason.includes('escalated to tier 2'), `unexpected reason: ${reason}`);
+  });
+});

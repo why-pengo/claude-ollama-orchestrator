@@ -101,11 +101,12 @@ Pass a file without shell substitution (avoids newline collapsing and ARG_MAX li
   node index.js --file src/models.py "Summarise what this module does"
 
 Env vars:
-  OLLAMA_MODEL         default: mistral        (local simple-task model)
-  OLLAMA_REMOTE_HOST   e.g. http://192.168.x.x:11434  (enables medium tier)
-  OLLAMA_REMOTE_MODEL  default: qwen2.5:32b    (remote medium-task model)
-  OLLAMA_PORT          default: 11434
-  OLLAMA_ORCH_PATH     set in your shell profile for portable CLAUDE.md instructions
+  OLLAMA_MODEL             default: mistral        (local simple-task model)
+  OLLAMA_REMOTE_HOST       e.g. http://192.168.x.x:11434  (enables medium tier)
+  OLLAMA_REMOTE_MODEL      default: qwen2.5:32b    (remote medium-task model)
+  OLLAMA_PORT              default: 11434
+  OLLAMA_SIMPLE_SIZE_LIMIT default: 20000          (chars; simple-keyword prompts above this escalate to tier 2)
+  OLLAMA_ORCH_PATH         set in your shell profile for portable CLAUDE.md instructions
 
 Examples:
   node index.js "Format this JSON: {name:'alice'}"

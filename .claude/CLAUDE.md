@@ -40,9 +40,9 @@ Apple M4 Pro. Mistral (4GB) warm ~2–6s, cold ~20s. qwen3:4b (23GB) too slow fo
 
 ## Routing Logic
 
-The router checks **complex keywords first**, then medium, then simple. Complex always wins if present.
+The router checks **complex keywords first**, then medium, then simple. Complex always wins if present. Within simple, **size is checked second**: a simple-keyword prompt longer than `OLLAMA_SIMPLE_SIZE_LIMIT` (default 20 000 chars) is escalated to tier 2 to avoid OOM / timeout on the local model.
 
-**Simple keywords** (→ Local Ollama): `format, extract, convert, parse, organise, organize, list, template, rename, sort`
+**Simple keywords** (→ Local Ollama, or tier 2 if oversized): `format, extract, convert, parse, organise, organize, list, template, rename, sort`
 
 **Medium keywords** (→ Remote Ollama): `explain, reason`
 

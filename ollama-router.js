@@ -11,6 +11,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
 const LOG_FILE = join(__dirname, 'orchestrator.log');
 
+// Simple-keyword tasks larger than this are escalated to tier 2 (remote Ollama)
+// to avoid OOM / timeout on the local model. Override with OLLAMA_SIMPLE_SIZE_LIMIT.
+const SIMPLE_SIZE_LIMIT = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT ?? 20_000);
+
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
   console.log(line);
@@ -242,6 +246,12 @@ class TaskRouter {
 
     const simpleMatch = simple.find((kw) => lower.includes(kw));
     if (simpleMatch) {
+      if (prompt.length > SIMPLE_SIZE_LIMIT) {
+        return {
+          complexity: 'medium',
+          reason: `matched keyword "${simpleMatch}" (simple list) but prompt length ${prompt.length} > ${SIMPLE_SIZE_LIMIT} chars — escalated to tier 2`,
+        };
+      }
       return { complexity: 'simple', reason: `matched keyword "${simpleMatch}" (simple list)` };
     }
 
@@ -302,6 +312,7 @@ class TaskRouter {
   }
 }
 
+export { SIMPLE_SIZE_LIMIT };
 export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
 
 export function estimateSavings(chars) {

@@ -336,13 +336,14 @@ function Dashboard() {
     };
   }, [stats, sqliteData]);
 
-  // log panel gets whatever rows remain after tier cards (~12), summary (1), footer (1), borders
-  const logMaxLines = Math.max(4, rows - 16);
+  // Fixed rows: tier row (11) + history panel (7) + summary (1) +
+  //             log border+title+blank (3) + log bottom border (1) + footer (1) = 24
+  const logMaxLines = Math.max(4, rows - 24);
   const maxLineLen = Math.max(20, cols - 6);
 
   return h(
     Box,
-    { flexDirection: 'column', width: cols },
+    { flexDirection: 'column', width: cols, height: rows },
     h(
       Box,
       { flexDirection: 'row', width: cols },

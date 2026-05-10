@@ -14,21 +14,21 @@ Routes mechanical tasks to local Ollama (free) and flags complex tasks for Claud
 
 ## Key Files
 
-| File | Purpose |
-|---|---|
-| `index.js` | CLI entry point — `parseArgs`, `--file`, `--stats`, `--dashboard` flags |
-| `ollama-router.js` | Routing logic, Ollama calls, stats persistence, cost estimation |
-| `claude-orchestrator.js` | Skills/rules wrapper, logging |
-| `dashboard.js` | Full-screen Ink TUI dashboard |
-| `orchestrator.log` | Append-only log (gitignored) |
-| `orchestrator-stats.json` | Persisted stats across runs (gitignored) |
+| File                      | Purpose                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `index.js`                | CLI entry point — `parseArgs`, `--file`, `--stats`, `--dashboard` flags |
+| `ollama-router.js`        | Routing logic, Ollama calls, stats persistence, cost estimation         |
+| `claude-orchestrator.js`  | Skills/rules wrapper, logging                                           |
+| `dashboard.js`            | Full-screen Ink TUI dashboard                                           |
+| `orchestrator.log`        | Append-only log (gitignored)                                            |
+| `orchestrator-stats.json` | Persisted stats across runs (gitignored)                                |
 
 ## Env Vars
 
-| Var | Default | Purpose |
-|---|---|---|
-| `OLLAMA_MODEL` | `mistral` | Which local model to use |
-| `OLLAMA_ORCH_PATH` | — | Full path to `index.js`; set in shell profile for portable CLAUDE.md instructions in other projects |
+| Var                | Default   | Purpose                                                                                             |
+| ------------------ | --------- | --------------------------------------------------------------------------------------------------- |
+| `OLLAMA_MODEL`     | `mistral` | Which local model to use                                                                            |
+| `OLLAMA_ORCH_PATH` | —         | Full path to `index.js`; set in shell profile for portable CLAUDE.md instructions in other projects |
 
 Source via `source env.source` (gitignored) or set in shell profile.
 
@@ -54,11 +54,11 @@ When a task misroutes, **move the keyword to the complex list** — don't just r
 
 Always distinguish before routing:
 
-| Category | Examples | Right tool |
-|---|---|---|
-| Deterministic tool ops | Format Python, lint, run tests | CLI directly (`make format`, `black`, etc.) |
-| Generative simple | Extract values, convert formats, summarise | Ollama orchestrator |
-| Generative complex | Debug, design, refactor, security review | Claude Code directly |
+| Category               | Examples                                   | Right tool                                  |
+| ---------------------- | ------------------------------------------ | ------------------------------------------- |
+| Deterministic tool ops | Format Python, lint, run tests             | CLI directly (`make format`, `black`, etc.) |
+| Generative simple      | Extract values, convert formats, summarise | Ollama orchestrator                         |
+| Generative complex     | Debug, design, refactor, security review   | Claude Code directly                        |
 
 **Never send deterministic CLI ops to Ollama** — it can only generate text, not run tools.
 

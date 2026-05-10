@@ -27,17 +27,17 @@ describe('assessComplexityWithReason — complex keyword match', () => {
 
 describe('assessComplexityWithReason — medium keyword match', () => {
   it('returns complexity medium', () =>
-    assert.equal(assess('Design a REST API').complexity, 'medium'));
+    assert.equal(assess('Explain the difference between TCP and UDP').complexity, 'medium'));
 
   it('names the matched keyword', () =>
-    assert.ok(assess('Design a REST API').reason.includes('"design"')));
+    assert.ok(assess('Explain the difference between TCP and UDP').reason.includes('"explain"')));
 
   it('attributes to medium list', () =>
-    assert.ok(assess('Design a REST API').reason.includes('medium list')));
+    assert.ok(assess('Explain the difference between TCP and UDP').reason.includes('medium list')));
 
   it('picks first matching medium keyword', () => {
-    const { reason } = assess('debug and refactor this module');
-    assert.ok(reason.includes('"debug"'));
+    const { reason } = assess('explain and reason about this');
+    assert.ok(reason.includes('"explain"'));
   });
 });
 
@@ -73,9 +73,9 @@ describe('assessComplexityWithReason — complex beats medium beats simple', () 
     assert.ok(reason.includes('"clean"'));
   });
 
-  it('"implement beats list" routes medium (implement wins)', () => {
+  it('"implement beats list" routes complex (implement wins)', () => {
     const { complexity, reason } = assess('list steps to implement a login flow');
-    assert.equal(complexity, 'medium');
+    assert.equal(complexity, 'complex');
     assert.ok(reason.includes('"implement"'));
   });
 });

@@ -29,20 +29,10 @@ describe('assessComplexity — simple tasks', () => {
 });
 
 describe('assessComplexity — medium tasks', () => {
-  it('debug Python traceback', () =>
-    assert.equal(assess('Debug this Python traceback: AttributeError...'), 'medium'));
   it('explain TCP vs UDP', () =>
     assert.equal(assess('Explain the difference between TCP and UDP'), 'medium'));
-  it('refactor', () =>
-    assert.equal(assess('Refactor this function to be more readable'), 'medium'));
-  it('design REST API', () =>
-    assert.equal(assess('Design a REST API for a blog platform'), 'medium'));
-  it('implement beats list', () =>
-    assert.equal(assess('List steps to implement a login flow'), 'medium'));
-  it('optimise (British)', () => assert.equal(assess('Optimise this database query'), 'medium'));
-  it('optimize (American)', () => assert.equal(assess('Optimize this database query'), 'medium'));
-  it('reason about tradeoffs', () =>
-    assert.equal(assess('Reason through the options for this design'), 'medium'));
+  it('reason through options', () =>
+    assert.equal(assess('Reason through these options'), 'medium'));
 });
 
 describe('assessComplexity — complex tasks', () => {
@@ -55,6 +45,18 @@ describe('assessComplexity — complex tasks', () => {
   it('plan', () => assert.equal(assess('Plan the migration strategy for this service'), 'complex'));
   it('clean beats organise', () =>
     assert.equal(assess('Clean up and organise this code'), 'complex'));
+  it('debug Python traceback', () =>
+    assert.equal(assess('Debug this Python traceback: AttributeError...'), 'complex'));
+  it('refactor', () =>
+    assert.equal(assess('Refactor this function to be more readable'), 'complex'));
+  it('design REST API', () =>
+    assert.equal(assess('Design a REST API for a blog platform'), 'complex'));
+  it('implement beats list', () =>
+    assert.equal(assess('List steps to implement a login flow'), 'complex'));
+  it('optimise (British)', () => assert.equal(assess('Optimise this database query'), 'complex'));
+  it('optimize (American)', () => assert.equal(assess('Optimize this database query'), 'complex'));
+  it('reason with design keyword routes complex (design wins)', () =>
+    assert.equal(assess('Reason through the options for this design'), 'complex'));
 });
 
 describe('assessComplexity — fallback (no keywords)', () => {

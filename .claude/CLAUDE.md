@@ -14,21 +14,21 @@ Routes mechanical tasks to local Ollama (free) and flags complex tasks for Claud
 
 ## Key Files
 
-| File | Purpose |
-|---|---|
-| `index.js` | CLI entry point — `parseArgs`, `--file`, `--stats`, `--dashboard` flags |
-| `ollama-router.js` | Routing logic, Ollama calls, stats persistence, cost estimation |
-| `claude-orchestrator.js` | Skills/rules wrapper, logging |
-| `dashboard.js` | Full-screen Ink TUI dashboard |
-| `orchestrator.log` | Append-only log (gitignored) |
-| `orchestrator-stats.json` | Persisted stats across runs (gitignored) |
+| File                      | Purpose                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `index.js`                | CLI entry point — `parseArgs`, `--file`, `--stats`, `--dashboard` flags |
+| `ollama-router.js`        | Routing logic, Ollama calls, stats persistence, cost estimation         |
+| `claude-orchestrator.js`  | Skills/rules wrapper, logging                                           |
+| `dashboard.js`            | Full-screen Ink TUI dashboard                                           |
+| `orchestrator.log`        | Append-only log (gitignored)                                            |
+| `orchestrator-stats.json` | Persisted stats across runs (gitignored)                                |
 
 ## Env Vars
 
-| Var | Default | Purpose |
-|---|---|---|
-| `OLLAMA_MODEL` | `mistral` | Which local model to use |
-| `OLLAMA_ORCH_PATH` | — | Full path to `index.js`; set in shell profile for portable CLAUDE.md instructions in other projects |
+| Var                | Default   | Purpose                                                                                             |
+| ------------------ | --------- | --------------------------------------------------------------------------------------------------- |
+| `OLLAMA_MODEL`     | `mistral` | Which local model to use                                                                            |
+| `OLLAMA_ORCH_PATH` | —         | Full path to `index.js`; set in shell profile for portable CLAUDE.md instructions in other projects |
 
 Source via `source env.source` (gitignored) or set in shell profile.
 
@@ -40,25 +40,28 @@ Apple M4 Pro. Mistral (4GB) warm ~2–6s, cold ~20s. qwen3:4b (23GB) too slow fo
 
 ## Routing Logic
 
-The router checks **complex keywords first**, then simple. Complex always wins if present.
+The router checks **complex keywords first**, then medium, then simple. Complex always wins if present.
 
-**Simple keywords** (→ Ollama): `format, extract, convert, parse, organise, organize, list, template, rename, sort`
+**Simple keywords** (→ Local Ollama): `format, extract, convert, parse, organise, organize, list, template, rename, sort`
 
-**Complex keywords** (→ Claude Code): `design, architect, optimise, optimize, debug, reason, plan, refactor, security, tradeoff, implement, explain, clean`
+**Medium keywords** (→ Remote Ollama): `explain, reason`
+
+**Complex keywords** (→ Claude Code): `architect, security, tradeoff, plan, clean, debug, refactor, design, implement, optimise, optimize`
 
 ### Routing Fix Rule
 
-When a task misroutes, **move the keyword to the complex list** — don't just remove it from simple. The router checks complex first; if a prompt has both a complex-intent word and an unrelated simple word, complex wins. Simply deleting from simple leaves the simple keyword matching.
+When a task misroutes, **move the keyword to the correct tier** — don't just remove it from the wrong one. The router checks complex first; if a prompt has both a complex-intent word and a simpler word, complex wins.
 
 ### Three-Category Task Distinction
 
 Always distinguish before routing:
 
-| Category | Examples | Right tool |
-|---|---|---|
-| Deterministic tool ops | Format Python, lint, run tests | CLI directly (`make format`, `black`, etc.) |
-| Generative simple | Extract values, convert formats, summarise | Ollama orchestrator |
-| Generative complex | Debug, design, refactor, security review | Claude Code directly |
+| Category               | Examples                                   | Right tool                                  |
+| ---------------------- | ------------------------------------------ | ------------------------------------------- |
+| Deterministic tool ops | Format Python, lint, run tests             | CLI directly (`make format`, `black`, etc.) |
+| Generative simple      | Extract values, convert formats, summarise | Local Ollama (tier 1)                       |
+| Generative medium      | Explain concepts, reason through options   | Remote Ollama (tier 2)                      |
+| Generative complex     | Debug, design, refactor, security review   | Claude Code directly (tier 3)               |
 
 **Never send deterministic CLI ops to Ollama** — it can only generate text, not run tools.
 

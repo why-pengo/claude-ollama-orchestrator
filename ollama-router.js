@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { insertRequest, migrateFromRoutes } from './stats-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
@@ -24,7 +25,6 @@ function makeDefaultStats() {
     claudeCodeReferrals: 0,
     ollamaFallbacks: 0,
     totalOffloadedChars: 0,
-    routes: [],
   };
 }
 
@@ -38,6 +38,10 @@ function loadStats() {
     }
     data.totalRequests =
       (data.simpleCalls || 0) + (data.mediumCalls || 0) + (data.claudeCodeReferrals || 0);
+    if (data.routes?.length) {
+      migrateFromRoutes(data.routes);
+    }
+    delete data.routes;
     return { ...makeDefaultStats(), ...data };
   } catch {
     return makeDefaultStats();
@@ -61,12 +65,7 @@ class TaskRouter {
   _ollamaFallback(prompt, label, reason, retryHint, elapsed = 0) {
     log(label, reason);
     this.stats.ollamaFallbacks = (this.stats.ollamaFallbacks || 0) + 1;
-    this.stats.routes.push({
-      ts: new Date().toISOString(),
-      route: 'ollama-fallback',
-      label,
-      ms: elapsed,
-    });
+    insertRequest({ ts: Date.now(), route: 'ollama-fallback', ms: elapsed, label });
     saveStats(this.stats);
 
     const text =
@@ -172,12 +171,7 @@ class TaskRouter {
 
     this.stats[statField] = (this.stats[statField] || 0) + 1;
     this.stats.totalOffloadedChars = (this.stats.totalOffloadedChars || 0) + prompt.length;
-    this.stats.routes.push({
-      ts: new Date().toISOString(),
-      route: routeLabel,
-      model,
-      ms: elapsed,
-    });
+    insertRequest({ ts: Date.now(), route: routeLabel, ms: elapsed, chars: prompt.length, model });
     saveStats(this.stats);
 
     return { source: routeLabel, model, text: fullResponse, streamed: true };
@@ -196,7 +190,7 @@ class TaskRouter {
   referToClaudeCode(prompt) {
     log('ROUTER', 'Referring to Claude Code');
     this.stats.claudeCodeReferrals++;
-    this.stats.routes.push({ ts: new Date().toISOString(), route: 'claude-code', ms: 0 });
+    insertRequest({ ts: Date.now(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);
     return {
       source: 'claude-code',

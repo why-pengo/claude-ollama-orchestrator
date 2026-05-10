@@ -127,7 +127,7 @@ describe('--dry-run: prompt display', () => {
 describe('--stats: estimated savings output', () => {
   // 4,000,000 chars / 4 = 1,000,000 tokens; 1,000,000 / 1M * $3 = $3.00
   const testStats = {
-    totalRequests: 13,
+    totalRequests: 12,
     simpleCalls: 8,
     mediumCalls: 2,
     claudeCodeReferrals: 2,
@@ -180,5 +180,15 @@ describe('--stats: estimated savings output', () => {
   it('labels the pricing rate used', () => {
     const { stdout } = run('--stats');
     assert.ok(stdout.includes('$3/M') || stdout.includes('$3.0/M'));
+  });
+
+  it('shows correct Total requests count (8+2+2=12)', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('Total requests     : 12'));
+  });
+
+  it('shows correct Simple calls percentage (8/12=67%)', () => {
+    const { stdout } = run('--stats');
+    assert.ok(stdout.includes('67%'));
   });
 });

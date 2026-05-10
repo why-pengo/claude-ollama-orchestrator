@@ -36,11 +36,8 @@ function loadStats() {
       data.simpleCalls = data.ollamaCalls;
       delete data.ollamaCalls;
     }
-    // seed totalRequests from completed calls if not yet tracked
-    if (!('totalRequests' in data)) {
-      data.totalRequests =
-        (data.simpleCalls || 0) + (data.mediumCalls || 0) + (data.claudeCodeReferrals || 0);
-    }
+    data.totalRequests =
+      (data.simpleCalls || 0) + (data.mediumCalls || 0) + (data.claudeCodeReferrals || 0);
     return { ...makeDefaultStats(), ...data };
   } catch {
     return makeDefaultStats();

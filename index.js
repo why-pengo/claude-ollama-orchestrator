@@ -137,16 +137,25 @@ Examples:
     const simplePct = total ? Math.round((simple / total) * 100) : 0;
     const mediumPct = total ? Math.round((medium / total) * 100) : 0;
     const refsPct = total ? Math.round((refs / total) * 100) : 0;
-    const fallbackRoutes = (stats.routes || []).filter((r) => r.route === 'ollama-fallback');
-    const byLabel = fallbackRoutes.reduce((acc, r) => {
-      acc[r.label] = (acc[r.label] || 0) + 1;
-      return acc;
-    }, {});
-    const fbLocal = `down=${byLabel['OLLAMA-DOWN'] || 0}/timeout=${byLabel['OLLAMA-TIMEOUT'] || 0}/err=${byLabel['OLLAMA-ERROR'] || 0}`;
-    const fbRemote = `down=${byLabel['OLLAMA-REMOTE-DOWN'] || 0}/timeout=${byLabel['OLLAMA-REMOTE-TIMEOUT'] || 0}/err=${byLabel['OLLAMA-REMOTE-ERROR'] || 0}`;
     const { tokens: estimatedTokens, savings: estimatedSavings } = estimateSavings(
       stats.totalOffloadedChars || 0,
     );
+
+    let fbLocal = 'down=0/timeout=0/err=0';
+    let fbRemote = 'down=0/timeout=0/err=0';
+    let tallies = null;
+    let recent = [];
+
+    try {
+      const { getFallbackCounts, getTallies, getRecentRoutes } = await import('./stats-db.js');
+      const fb = getFallbackCounts();
+      fbLocal = `down=${fb['OLLAMA-DOWN'] || 0}/timeout=${fb['OLLAMA-TIMEOUT'] || 0}/err=${fb['OLLAMA-ERROR'] || 0}`;
+      fbRemote = `down=${fb['OLLAMA-REMOTE-DOWN'] || 0}/timeout=${fb['OLLAMA-REMOTE-TIMEOUT'] || 0}/err=${fb['OLLAMA-REMOTE-ERROR'] || 0}`;
+      tallies = getTallies();
+      recent = getRecentRoutes(5);
+    } catch {
+      // DB not yet initialised (no requests recorded)
+    }
 
     console.log('\nOrchestrator Stats');
     console.log('------------------');
@@ -159,12 +168,22 @@ Examples:
     console.log(
       `Estimated savings  : ~$${estimatedSavings}  (vs Claude Sonnet @ $${SAVINGS_RATE_PER_M_TOKENS}/M input tokens)`,
     );
-    if (stats.routes?.length) {
-      const last5 = stats.routes.slice(-5).reverse();
+
+    if (tallies) {
+      const fmt = (m) =>
+        `local=${m['ollama'] ?? 0}  remote=${m['ollama-remote'] ?? 0}  claude=${m['claude-code'] ?? 0}`;
+      console.log('\nUsage breakdown:');
+      console.log(`  Today      : ${fmt(tallies.today)}`);
+      console.log(`  This week  : ${fmt(tallies.week)}`);
+      console.log(`  This month : ${fmt(tallies.month)}`);
+    }
+
+    if (recent.length) {
       console.log('\nLast 5 routes:');
-      last5.forEach((r) =>
-        console.log(`  ${r.ts}  ${r.route.padEnd(14)}  ${r.ms != null ? r.ms + 'ms' : ''}`),
-      );
+      recent.forEach((r) => {
+        const ts = new Date(r.ts).toISOString();
+        console.log(`  ${ts}  ${r.route.padEnd(14)}  ${r.ms != null ? r.ms + 'ms' : ''}`);
+      });
     }
     return;
   }

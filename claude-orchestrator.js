@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import TaskRouter from './ollama-router.js';
+import { resetDb } from './stats-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = join(__dirname, 'orchestrator.log');
@@ -81,6 +82,7 @@ class ClaudeOrchestrator {
 
   reset() {
     this.router.resetStats();
+    resetDb();
     this.history = [];
   }
 }

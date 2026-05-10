@@ -76,7 +76,7 @@ class ClaudeOrchestrator {
   }
 
   getStats() {
-    return { ...this.router.getStats(), totalRequests: this.history.length };
+    return this.router.getStats();
   }
 
   reset() {

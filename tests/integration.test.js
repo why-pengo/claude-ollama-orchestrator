@@ -127,7 +127,7 @@ describe('--dry-run: prompt display', () => {
 describe('--stats: estimated savings output', () => {
   // 4,000,000 chars / 4 = 1,000,000 tokens; 1,000,000 / 1M * $3 = $3.00
   const testStats = {
-    totalRequests: 13,
+    totalRequests: 12,
     simpleCalls: 8,
     mediumCalls: 2,
     claudeCodeReferrals: 2,

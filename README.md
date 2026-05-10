@@ -14,6 +14,20 @@ Every request is assessed against three keyword lists:
 
 Simple and medium tasks stream tokens directly to your terminal. Complex tasks print a ready-to-paste prompt for your Claude Code session. If a node is offline, the orchestrator silently cascades to the next tier.
 
+## Why not route complex tasks to the Claude API?
+
+If you have Claude Pro / Max, you already have Claude via Claude Code — a separate API account means separate billing on top of your subscription. This setup keeps it simple: Ollama handles mechanical work for free, and Claude Code (which you already have open) handles the rest.
+
+## Model benchmarks (Apple M4 Pro)
+
+| Model         | Tier   | Size  | Cold start | Warm  | Notes                          |
+| ------------- | ------ | ----- | ---------- | ----- | ------------------------------ |
+| `mistral`     | Simple | 4 GB  | ~20s       | ~3s   | Best default balance           |
+| `llama3.2:3b` | Simple | 2 GB  | ~5s        | <1s   | Fastest, good for high volume  |
+| `qwen2.5:32b` | Medium | 19 GB | ~30s       | ~10s  | Best for medium-tier (remote)  |
+
+Cold start is a one-time cost per `ollama serve` session. Run a throwaway warm-up request if first-request latency matters.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 22+
@@ -136,6 +150,34 @@ assessComplexity("List steps to implement X") → complex ✓  (implement beats 
 assessComplexity("Architect a system")        → complex ✓
 assessComplexity("Clean up and organise")     → complex ✓  (clean beats organise)
 ```
+
+## Tips
+
+**Do**
+- Warm up the model at the start of each session (`node index.js "say hello"`) to avoid cold-start latency on the first real task
+- Use `--simple` / `--complex` / `--dry-run` until you trust auto-routing for your prompts
+- Add keywords to the correct tier based on real misroutes you observe — run the exact misrouted prompt with `--dry-run` to confirm the fix
+- Use `--stats` to track your Ollama vs Claude Code split over time
+
+**Don't**
+- Use a large model as your local default — pick the smallest that gives acceptable quality for simple tasks
+- Send `black` / `isort` / `make test` to Ollama — they are deterministic CLI ops, not generative tasks
+- Forget that `ollama serve` must be running before invoking the orchestrator
+- Route sensitive data through Ollama if your machine could be compromised
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `ECONNREFUSED localhost:11434` | Run `ollama serve` in another terminal |
+| `model not found` | Run `ollama pull mistral` |
+| First request is slow | Normal — cold start. Subsequent requests will be fast |
+| All requests are slow | Model too large for your RAM; try `llama3.2:3b` |
+| `node $OLLAMA_ORCH_PATH` produces no output | `OLLAMA_ORCH_PATH` may point through a symlink — ensure it resolves to the real path, or update to the latest version (fixes `fs.realpathSync` guard) |
+| Medium tasks not using remote node | `OLLAMA_REMOTE_HOST` not set — add it to your shell profile and re-source |
+| Wrong route for a prompt | Use `--dry-run` to preview, then move the keyword to the correct tier list in `ollama-router.js` |
+| `[ERROR] File not found` with `--file` | Path is relative to where you run the command — use an absolute path |
+| `OLLAMA_ORCH_PATH` unset in Claude Code session | Add `export OLLAMA_ORCH_PATH=...` to `~/.zshrc` and restart the terminal / Claude Code |
 
 ## Roadmap
 

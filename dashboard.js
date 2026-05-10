@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } from './ollama-router.js';
+import { getAvgMs, getFallbackCounts, getTallies } from './stats-db.js';
 
 const h = React.createElement;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -14,12 +15,6 @@ const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
 const LOG_FILE = join(__dirname, 'orchestrator.log');
 const LOCAL_URL = `http://localhost:${process.env.OLLAMA_PORT || 11434}`;
 const REMOTE_URL = process.env.OLLAMA_REMOTE_HOST || null;
-
-function avgMs(routes, routeType) {
-  const matching = (routes || []).filter((r) => r.route === routeType && r.ms > 0);
-  if (!matching.length) return null;
-  return Math.round(matching.reduce((s, r) => s + r.ms, 0) / matching.length);
-}
 
 function statusDot(online) {
   if (online === null) return { color: 'yellow', char: '◌', label: 'checking…' };
@@ -161,11 +156,58 @@ function LogPanel({ lines, maxLines, maxLineLen }) {
 }
 
 // ── Root dashboard ────────────────────────────────────────────────────────────
+// ── Usage history panel ───────────────────────────────────────────────────────
+function HistoryPanel({ tallies }) {
+  const fmt = (m) => {
+    const l = String(m['ollama'] ?? 0).padStart(4);
+    const r = String(m['ollama-remote'] ?? 0).padStart(4);
+    const c = String(m['claude-code'] ?? 0).padStart(4);
+    const t = ((m['ollama'] ?? 0) + (m['ollama-remote'] ?? 0) + (m['claude-code'] ?? 0));
+    return h(
+      Box,
+      { gap: 1 },
+      h(Text, { color: 'green' }, `local${l}`),
+      h(Text, { color: 'magenta' }, `remote${r}`),
+      h(Text, { color: 'yellow' }, `claude${c}`),
+      h(Text, { dimColor: true }, `total ${String(t).padStart(4)}`),
+    );
+  };
+
+  return h(
+    Box,
+    { flexDirection: 'column', borderStyle: 'round', borderColor: 'blue', paddingX: 1 },
+    h(Text, { bold: true, color: 'blue' }, 'Usage history'),
+    h(Text, null, ''),
+    h(Box, { gap: 2 },
+      h(Box, { flexDirection: 'column' },
+        h(Text, { dimColor: true }, 'Today      '),
+        h(Text, { dimColor: true }, 'This week  '),
+        h(Text, { dimColor: true }, 'This month '),
+      ),
+      h(Box, { flexDirection: 'column' },
+        fmt(tallies.today),
+        fmt(tallies.week),
+        fmt(tallies.month),
+      ),
+    ),
+  );
+}
+
+const REFRESH_OPTIONS = [2000, 5000, 10000, 20000, 30000];
+const DEFAULT_REFRESH_IDX = 1; // 5s
+
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [logLines, setLogLines] = useState([]);
   const [localOnline, setLocalOnline] = useState(null);
   const [remoteOnline, setRemoteOnline] = useState(null);
+  const [refreshIdx, setRefreshIdx] = useState(DEFAULT_REFRESH_IDX);
+  const [sqliteData, setSqliteData] = useState({
+    localAvg: null,
+    remoteAvg: null,
+    fallbacks: {},
+    tallies: { today: {}, week: {}, month: {} },
+  });
   const { exit } = useApp();
   const { columns: cols = 80, rows = 24 } = useWindowSize();
   const { stdout: inkStdout } = useStdout();
@@ -209,6 +251,17 @@ function Dashboard() {
         setLogLines([]);
       }
 
+      try {
+        setSqliteData({
+          localAvg: getAvgMs('ollama'),
+          remoteAvg: getAvgMs('ollama-remote'),
+          fallbacks: getFallbackCounts(),
+          tallies: getTallies(),
+        });
+      } catch {
+        // DB not yet initialised
+      }
+
       localAbortRef.current?.abort();
       const lac = new AbortController();
       localAbortRef.current = lac;
@@ -235,16 +288,18 @@ function Dashboard() {
     }
 
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, REFRESH_OPTIONS[refreshIdx]);
     return () => {
       clearInterval(id);
       localAbortRef.current?.abort();
       remoteAbortRef.current?.abort();
     };
-  }, []);
+  }, [refreshIdx]);
 
-  useInput((input) => {
+  useInput((input, key) => {
     if (input === 'q') exit();
+    if (key.leftArrow) setRefreshIdx((i) => Math.max(0, i - 1));
+    if (key.rightArrow) setRefreshIdx((i) => Math.min(REFRESH_OPTIONS.length - 1, i + 1));
   });
 
   const total = stats?.totalRequests ?? 0;
@@ -252,22 +307,16 @@ function Dashboard() {
     stats?.totalOffloadedChars ?? 0,
   );
 
-  // Compute all route-derived aggregates once per stats update
+  // Compute all route-derived aggregates once per stats/sqliteData update
   const derived = useMemo(() => {
-    const routes = stats?.routes || [];
-    const fbl = routes
-      .filter((r) => r.route === 'ollama-fallback')
-      .reduce((a, r) => {
-        a[r.label] = (a[r.label] || 0) + 1;
-        return a;
-      }, {});
+    const fbl = sqliteData.fallbacks;
     const t = stats?.totalRequests ?? 0;
     const simple = stats?.simpleCalls ?? 0;
     const medium = stats?.mediumCalls ?? 0;
     const refs = stats?.claudeCodeReferrals ?? 0;
     return {
-      localAvg: avgMs(routes, 'ollama'),
-      remoteAvg: avgMs(routes, 'ollama-remote'),
+      localAvg: sqliteData.localAvg,
+      remoteAvg: sqliteData.remoteAvg,
       localFb: {
         down: fbl['OLLAMA-DOWN'],
         timeout: fbl['OLLAMA-TIMEOUT'],
@@ -285,7 +334,7 @@ function Dashboard() {
       refs,
       refsPct: t ? Math.round((refs / t) * 100) : 0,
     };
-  }, [stats]);
+  }, [stats, sqliteData]);
 
   // log panel gets whatever rows remain after tier cards (~12), summary (1), footer (1), borders
   const logMaxLines = Math.max(4, rows - 16);
@@ -313,6 +362,7 @@ function Dashboard() {
       }),
       h(ClaudeCodeTierCard, { refs: derived.refs, pct: derived.refsPct }),
     ),
+    h(HistoryPanel, { tallies: sqliteData.tallies }),
     h(
       Box,
       { paddingX: 2 },
@@ -325,7 +375,11 @@ function Dashboard() {
     h(
       Box,
       { paddingX: 2 },
-      h(Text, { dimColor: true }, 'Refreshes every 1s  ·  '),
+      h(Text, { dimColor: true }, 'Refresh: '),
+      h(Text, { bold: true }, '← →'),
+      h(Text, { dimColor: true }, ' to change  ·  '),
+      h(Text, null, `${REFRESH_OPTIONS[refreshIdx] / 1000}s`),
+      h(Text, { dimColor: true }, `  [${REFRESH_OPTIONS.map((ms, i) => (i === refreshIdx ? `[${ms / 1000}]` : `${ms / 1000}`)).join(' ')}]  ·  `),
       h(Text, { bold: true }, 'q'),
       h(Text, { dimColor: true }, ' or '),
       h(Text, { bold: true }, 'Ctrl-C'),

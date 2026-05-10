@@ -193,7 +193,8 @@ class TaskRouter {
 
   // ── Claude Code referral ─────────────────────────────────────────────────────
   referToClaudeCode(prompt) {
-    log('ROUTER', 'Referring to Claude Code');
+    const preview = prompt.length > 120 ? prompt.slice(0, 120).trimEnd() + '...' : prompt;
+    log('ROUTER', `Referring to Claude Code — "${preview}" (${prompt.length} chars)`);
     this.stats.claudeCodeReferrals++;
     insertRequest({ ts: Date.now(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);

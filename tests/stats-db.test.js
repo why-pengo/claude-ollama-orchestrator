@@ -1,13 +1,14 @@
 // Tests for stats-db.js — SQLite time-series store.
-// STATS_DB_PATH must be set before stats-db.js is first imported so the
-// eager new Database() call uses ':memory:' rather than the on-disk file.
-// Static ESM imports are hoisted but the eager init only runs once the
-// module body executes, which happens after this assignment.
-process.env.STATS_DB_PATH = ':memory:';
-
+// stats-db.js opens the Database eagerly at module scope, so STATS_DB_PATH
+// must be set before the module is first imported. Static ESM imports are
+// hoisted ahead of any module-body statements, so we use a dynamic import
+// here to guarantee the env var is set first.
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+
+process.env.STATS_DB_PATH = ':memory:';
+
+const {
   insertRequest,
   migrateFromRoutes,
   getAvgMs,
@@ -15,7 +16,7 @@ import {
   getTallies,
   getRecentRoutes,
   resetDb,
-} from '../stats-db.js';
+} = await import('../stats-db.js');
 
 // ── insertRequest / getRecentRoutes ───────────────────────────────────────────
 describe('insertRequest / getRecentRoutes', () => {

@@ -113,6 +113,22 @@ function ClaudeCodeTierCard({ refs, pct }) {
 }
 
 // ── Log feed panel ────────────────────────────────────────────────────────────
+const ISO_RE = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/;
+function localiseLogLine(line) {
+  return line.replace(ISO_RE, (iso) => {
+    try {
+      return new Date(iso).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    } catch {
+      return iso;
+    }
+  });
+}
+
 function LogPanel({ lines, maxLines, maxLineLen }) {
   const visible = lines.slice(0, maxLines);
 
@@ -140,7 +156,9 @@ function LogPanel({ lines, maxLines, maxLineLen }) {
           else if (tag === 'OLLAMA') color = 'green';
           else if (tag === 'ROUTER') color = 'blue';
           else if (tag === 'REQUEST') color = 'cyan';
-          const trimmed = line.length > maxLineLen ? `${line.slice(0, maxLineLen - 1)}…` : line;
+          const localLine = localiseLogLine(line);
+          const trimmed =
+            localLine.length > maxLineLen ? `${localLine.slice(0, maxLineLen - 1)}…` : localLine;
           return h(Text, { key: i, color }, trimmed);
         })),
   );

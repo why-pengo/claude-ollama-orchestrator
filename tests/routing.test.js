@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import TaskRouter from '../ollama-router.js';
+import TaskRouter, { SIMPLE_SIZE_LIMIT } from '../ollama-router.js';
 
 const router = new TaskRouter();
 const assess = (p) => router.assessComplexity(p);
@@ -72,4 +72,40 @@ describe('assessComplexity — known substring edge cases', () => {
   // "plan" is a substring of "planets" — documents known behaviour
   it('"planets" matches "plan" and routes complex', () =>
     assert.equal(assess('List the planets in the solar system'), 'complex'));
+});
+
+describe('assessComplexity — simple-keyword size escalation', () => {
+  const LIMIT = SIMPLE_SIZE_LIMIT;
+  const prefix = 'Extract values ';
+  const atLimit = `${prefix}${'x'.repeat(Math.max(0, LIMIT - prefix.length))}`;
+  const overLimit = atLimit + 'x';
+
+  it('simple keyword at size limit stays simple', () => assert.equal(assess(atLimit), 'simple'));
+  it('simple keyword one char over limit escalates to medium', () =>
+    assert.equal(assess(overLimit), 'medium'));
+  it('all simple keywords escalate when oversized', () => {
+    const big = 'x'.repeat(LIMIT + 1);
+    for (const kw of [
+      'format',
+      'extract',
+      'convert',
+      'parse',
+      'organise',
+      'organize',
+      'list',
+      'template',
+      'rename',
+      'sort',
+    ]) {
+      assert.equal(assess(`${kw} ${big}`), 'medium', `expected medium for keyword "${kw}"`);
+    }
+  });
+  it('complex keyword still wins over size escalation', () =>
+    assert.equal(assess(`refactor ${'x'.repeat(LIMIT + 1)}`), 'complex'));
+  it('medium keyword still wins over size escalation', () =>
+    assert.equal(assess(`explain ${'x'.repeat(LIMIT + 1)}`), 'medium'));
+  it('reason string includes escalation message', () => {
+    const { reason } = router.assessComplexityWithReason(overLimit);
+    assert.ok(reason.includes('escalated to tier 2'), `unexpected reason: ${reason}`);
+  });
 });

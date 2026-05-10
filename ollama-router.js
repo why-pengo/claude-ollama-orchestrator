@@ -5,10 +5,16 @@
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { insertRequest, migrateFromRoutes } from './stats-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
 const LOG_FILE = join(__dirname, 'orchestrator.log');
+
+// Simple-keyword tasks larger than this are escalated to tier 2 (remote Ollama)
+// to avoid OOM / timeout on the local model. Override with OLLAMA_SIMPLE_SIZE_LIMIT.
+const _rawLimit = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT);
+const SIMPLE_SIZE_LIMIT = Number.isFinite(_rawLimit) && _rawLimit > 0 ? _rawLimit : 20_000;
 
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
@@ -24,7 +30,6 @@ function makeDefaultStats() {
     claudeCodeReferrals: 0,
     ollamaFallbacks: 0,
     totalOffloadedChars: 0,
-    routes: [],
   };
 }
 
@@ -38,6 +43,10 @@ function loadStats() {
     }
     data.totalRequests =
       (data.simpleCalls || 0) + (data.mediumCalls || 0) + (data.claudeCodeReferrals || 0);
+    if (data.routes?.length) {
+      migrateFromRoutes(data.routes);
+    }
+    delete data.routes;
     return { ...makeDefaultStats(), ...data };
   } catch {
     return makeDefaultStats();
@@ -61,12 +70,7 @@ class TaskRouter {
   _ollamaFallback(prompt, label, reason, retryHint, elapsed = 0) {
     log(label, reason);
     this.stats.ollamaFallbacks = (this.stats.ollamaFallbacks || 0) + 1;
-    this.stats.routes.push({
-      ts: new Date().toISOString(),
-      route: 'ollama-fallback',
-      label,
-      ms: elapsed,
-    });
+    insertRequest({ ts: Date.now(), route: 'ollama-fallback', ms: elapsed, label });
     saveStats(this.stats);
 
     const text =
@@ -172,12 +176,7 @@ class TaskRouter {
 
     this.stats[statField] = (this.stats[statField] || 0) + 1;
     this.stats.totalOffloadedChars = (this.stats.totalOffloadedChars || 0) + prompt.length;
-    this.stats.routes.push({
-      ts: new Date().toISOString(),
-      route: routeLabel,
-      model,
-      ms: elapsed,
-    });
+    insertRequest({ ts: Date.now(), route: routeLabel, ms: elapsed, chars: prompt.length, model });
     saveStats(this.stats);
 
     return { source: routeLabel, model, text: fullResponse, streamed: true };
@@ -196,7 +195,7 @@ class TaskRouter {
   referToClaudeCode(prompt) {
     log('ROUTER', 'Referring to Claude Code');
     this.stats.claudeCodeReferrals++;
-    this.stats.routes.push({ ts: new Date().toISOString(), route: 'claude-code', ms: 0 });
+    insertRequest({ ts: Date.now(), route: 'claude-code', ms: 0 });
     saveStats(this.stats);
     return {
       source: 'claude-code',
@@ -248,6 +247,12 @@ class TaskRouter {
 
     const simpleMatch = simple.find((kw) => lower.includes(kw));
     if (simpleMatch) {
+      if (prompt.length > SIMPLE_SIZE_LIMIT) {
+        return {
+          complexity: 'medium',
+          reason: `matched keyword "${simpleMatch}" (simple list) but prompt length ${prompt.length} > ${SIMPLE_SIZE_LIMIT} chars — escalated to tier 2`,
+        };
+      }
       return { complexity: 'simple', reason: `matched keyword "${simpleMatch}" (simple list)` };
     }
 
@@ -308,6 +313,7 @@ class TaskRouter {
   }
 }
 
+export { SIMPLE_SIZE_LIMIT };
 export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
 
 export function estimateSavings(chars) {

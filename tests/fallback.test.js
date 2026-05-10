@@ -8,6 +8,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import TaskRouter from '../ollama-router.js';
 
+// stats-db.js initialises the better-sqlite3 connection eagerly at import
+// time so the native CJS addon is fully loaded before this mock is applied.
+// If the DB were opened lazily (inside a function), the CJS loader's internal
+// readFileSync call would be intercepted here and throw 'no stats'.
 function stubFs() {
   mock.method(fs, 'appendFileSync', () => {});
   mock.method(fs, 'writeFileSync', () => {});

@@ -235,6 +235,9 @@ Examples:
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// realpathSync resolves symlinks so the comparison holds when OLLAMA_ORCH_PATH
+// points to a symlinked path (e.g. ~/workspace -> /Volumes/...) — Node resolves
+// symlinks in import.meta.url but not in process.argv[1].
+if (fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }

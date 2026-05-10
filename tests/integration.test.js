@@ -69,9 +69,9 @@ describe('--dry-run: routing decisions', () => {
   });
 
   it('medium keyword routes medium', () => {
-    const { stdout } = run('--dry-run', 'refactor this function');
+    const { stdout } = run('--dry-run', 'explain this code');
     assert.ok(stdout.includes('Route: medium'));
-    assert.ok(stdout.includes('"refactor"'));
+    assert.ok(stdout.includes('"explain"'));
   });
 
   it('--simple flag forces simple regardless of keywords', () => {
@@ -106,7 +106,13 @@ describe('--dry-run: destination line', () => {
   });
 
   it('medium route with no remote shows Claude Code destination', () => {
-    const { stdout } = run('--dry-run', 'refactor this function');
+    const env = { ...process.env };
+    delete env.OLLAMA_REMOTE_HOST;
+    const { stdout } = spawnSync('node', [INDEX, '--dry-run', 'explain this code'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env,
+    });
     assert.ok(stdout.includes('Route: medium'));
     assert.ok(stdout.includes('Claude Code'));
   });

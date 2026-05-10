@@ -9,8 +9,8 @@ Every request is assessed against three keyword lists:
 | Tier                 | Triggered by                                                                              | Node                              | Cost                  |
 | -------------------- | ----------------------------------------------------------------------------------------- | --------------------------------- | --------------------- |
 | **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise` | Local Ollama (e.g. mistral 7B)    | Free                  |
-| **Medium** (tier 2)  | `debug`, `explain`, `refactor`, `design`, `implement`, `reason`, `optimise`               | Remote Ollama (e.g. Qwen 2.5 32B) | Free                  |
-| **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, …                                   | Claude Code session               | Your Pro subscription |
+| **Medium** (tier 2)  | `explain`, `reason`                                                                       | Remote Ollama (e.g. Qwen 2.5 32B) | Free                  |
+| **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, `debug`, `refactor`, `design`, `implement`, `optimise`, `optimize` | Claude Code session | Your Pro subscription |
 
 Simple and medium tasks stream tokens directly to your terminal. Complex tasks print a ready-to-paste prompt for your Claude Code session. If a node is offline, the orchestrator silently cascades to the next tier.
 
@@ -99,12 +99,12 @@ For simple generative tasks, run the Ollama orchestrator via Bash:
 
 **Send to Ollama (simple):** extract values · convert formats · parse/organise data · list items · rename fields
 
-**Send to Ollama (medium — omit --simple flag):** debug · explain · refactor · design · implement
+**Send to Ollama (medium — omit --simple flag):** explain · reason
 
 **Never send to Ollama:** make format · make lint · make test · make migrate
 (these are deterministic CLI operations — run them directly)
 
-**Send to Claude Code:** architect · security review · tradeoffs · planning
+**Send to Claude Code:** debug · refactor · design · implement · architect · security review · tradeoffs · planning
 ```
 
 ## Development
@@ -129,9 +129,10 @@ The test suite locks in the routing matrix so keyword changes never silently bre
 ```
 assessComplexity("Format this JSON")          → simple  ✓
 assessComplexity("Extract all URLs")          → simple  ✓
-assessComplexity("Debug this traceback")      → medium  ✓
-assessComplexity("Design a REST API")         → medium  ✓
-assessComplexity("List steps to implement X") → medium  ✓  (implement beats list)
+assessComplexity("Explain TCP vs UDP")         → medium  ✓
+assessComplexity("Debug this traceback")      → complex ✓
+assessComplexity("Design a REST API")         → complex ✓
+assessComplexity("List steps to implement X") → complex ✓  (implement beats list)
 assessComplexity("Architect a system")        → complex ✓
 assessComplexity("Clean up and organise")     → complex ✓  (clean beats organise)
 ```

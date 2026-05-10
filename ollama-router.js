@@ -219,17 +219,20 @@ class TaskRouter {
       'rename',
       'sort',
     ];
-    const medium = [
+    const medium = ['explain', 'reason'];
+    const complex = [
+      'architect',
+      'security',
+      'tradeoff',
+      'plan',
+      'clean',
       'debug',
-      'explain',
       'refactor',
       'design',
       'implement',
-      'reason',
       'optimise',
       'optimize',
     ];
-    const complex = ['architect', 'security', 'tradeoff', 'plan', 'clean'];
 
     const lower = prompt.toLowerCase();
 

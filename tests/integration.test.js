@@ -108,11 +108,12 @@ describe('--dry-run: destination line', () => {
   it('medium route with no remote shows Claude Code destination', () => {
     const env = { ...process.env };
     delete env.OLLAMA_REMOTE_HOST;
-    const { stdout } = spawnSync('node', [INDEX, '--dry-run', 'explain this code'], {
+    const { stdout, status } = spawnSync('node', [INDEX, '--dry-run', 'explain this code'], {
       cwd: ROOT,
       encoding: 'utf8',
       env,
     });
+    assert.equal(status, 0);
     assert.ok(stdout.includes('Route: medium'));
     assert.ok(stdout.includes('Claude Code'));
   });

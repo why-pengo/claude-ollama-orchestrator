@@ -8,11 +8,11 @@ Every request is assessed against three keyword lists:
 
 | Tier                 | Triggered by                                                                                                             | Node                              | Cost                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | --------------------- |
-| **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise`                                | Local Ollama (e.g. mistral 7B)    | Free                  |
+| **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise`, `organize`                    | Local Ollama (e.g. mistral 7B)    | Free                  |
 | **Medium** (tier 2)  | `explain`, `reason`                                                                                                      | Remote Ollama (e.g. Qwen 2.5 32B) | Free                  |
 | **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, `debug`, `refactor`, `design`, `implement`, `optimise`, `optimize` | Claude Code session               | Your Pro subscription |
 
-Simple and medium tasks stream tokens directly to your terminal. Complex tasks print a ready-to-paste prompt for your Claude Code session. If a node is offline, the orchestrator silently cascades to the next tier.
+Simple tasks stream tokens directly to your terminal. Medium tasks do too — when a remote Ollama node is configured and available; otherwise they cascade to Claude Code. Complex tasks always print a ready-to-paste prompt for your Claude Code session.
 
 ## Why not route complex tasks to the Claude API?
 

@@ -13,7 +13,8 @@ const LOG_FILE = join(__dirname, 'orchestrator.log');
 
 // Simple-keyword tasks larger than this are escalated to tier 2 (remote Ollama)
 // to avoid OOM / timeout on the local model. Override with OLLAMA_SIMPLE_SIZE_LIMIT.
-const SIMPLE_SIZE_LIMIT = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT ?? 20_000);
+const _rawLimit = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT);
+const SIMPLE_SIZE_LIMIT = Number.isFinite(_rawLimit) && _rawLimit > 0 ? _rawLimit : 20_000;
 
 function log(tag, message) {
   const line = `[${new Date().toISOString()}] [${tag}] ${message}`;

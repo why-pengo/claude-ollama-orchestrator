@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import TaskRouter from '../ollama-router.js';
+import TaskRouter, { SIMPLE_SIZE_LIMIT } from '../ollama-router.js';
 
 const router = new TaskRouter();
 const assess = (p) => router.assessComplexity(p);
@@ -75,8 +75,9 @@ describe('assessComplexity — known substring edge cases', () => {
 });
 
 describe('assessComplexity — simple-keyword size escalation', () => {
-  const LIMIT = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT ?? 20_000);
-  const atLimit = `Extract values ${'x'.repeat(LIMIT - 'Extract values '.length)}`;
+  const LIMIT = SIMPLE_SIZE_LIMIT;
+  const prefix = 'Extract values ';
+  const atLimit = `${prefix}${'x'.repeat(Math.max(0, LIMIT - prefix.length))}`;
   const overLimit = atLimit + 'x';
 
   it('simple keyword at size limit stays simple', () => assert.equal(assess(atLimit), 'simple'));

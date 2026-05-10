@@ -113,19 +113,15 @@ function ClaudeCodeTierCard({ refs, pct }) {
 }
 
 // ── Log feed panel ────────────────────────────────────────────────────────────
-const ISO_RE = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/;
+const ISO_RE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g;
 function localiseLogLine(line) {
   return line.replace(ISO_RE, (iso) => {
-    try {
-      return new Date(iso).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-    } catch {
-      return iso;
-    }
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   });
 }
 

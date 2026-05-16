@@ -70,7 +70,7 @@ Always distinguish before routing:
 ## Monitoring
 
 ```bash
-tail -f orchestrator.log | grep -E "REQUEST|ROUTER|OLLAMA|CLAUDE|ERROR"
+tail -f orchestrator.log | grep -E "REQUEST|ROUTER|OLLAMA|CLAUDE|CLASSIFY|WARN|ERROR"
 ```
 
 Stats: `node index.js --stats`
@@ -78,9 +78,11 @@ Dashboard: `node index.js --dashboard`
 
 ### Claude Code activity tracking
 
-A global `Stop` hook in `~/.claude/settings.json` calls `node $OLLAMA_ORCH_PATH --track` after every Claude Code response, logging a `[CLAUDE]` entry and incrementing `claudeCodeReferrals`. The hook silently no-ops if `OLLAMA_ORCH_PATH` is unset.
+A global `Stop` hook in `~/.claude/settings.json` calls `node $OLLAMA_ORCH_PATH --track` after every Claude Code response, logging a `[CLAUDE]` entry and incrementing `claudeCodeReferrals`. The hook warns to stderr if `OLLAMA_ORCH_PATH` is unset.
 
-This gives the dashboard visibility into direct Claude Code work that never passes through `index.js` (complex tasks, real-time sessions, etc.).
+A global `UserPromptSubmit` hook calls `node $OLLAMA_ORCH_PATH --classify` on every prompt, logging a `[CLASSIFY]` entry showing how the router would have routed the task — without enforcing it. Useful for auditing whether tasks that went to Claude Code could have been offloaded to Ollama.
+
+Both hooks skip when `cwd` matches the orchestrator's own repo so meta-work on this project doesn't pollute the stats.
 
 ---
 

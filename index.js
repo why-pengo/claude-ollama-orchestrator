@@ -2,7 +2,7 @@
 // index.js
 
 import fs from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ClaudeOrchestrator from './claude-orchestrator.js';
 import {
@@ -10,7 +10,47 @@ import {
   SAVINGS_RATE_PER_M_TOKENS,
   trackClaudeActivity,
   logEntry,
+  classifyPrompt,
 } from './ollama-router.js';
+
+const ORCH_DIR = dirname(fileURLToPath(import.meta.url));
+
+// JSON.parse rejects literal control chars in string values (e.g. unescaped \t or \n in the
+// prompt field of Claude Code hook payloads). This retries with those chars properly escaped.
+function parseHookPayload(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    let inString = false;
+    let prevBackslash = false;
+    let out = '';
+    for (const ch of raw) {
+      const code = ch.charCodeAt(0);
+      if (prevBackslash) {
+        prevBackslash = false;
+        out += ch;
+        continue;
+      }
+      if (ch === '\\' && inString) {
+        prevBackslash = true;
+        out += ch;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        out += ch;
+        continue;
+      }
+      if (inString && code < 0x20) {
+        out +=
+          { 9: '\\t', 10: '\\n', 13: '\\r' }[code] ?? `\\u${code.toString(16).padStart(4, '0')}`;
+      } else {
+        out += ch;
+      }
+    }
+    return JSON.parse(out);
+  }
+}
 
 const mySkills = {
   'code-review': `You are an expert code reviewer.
@@ -93,6 +133,7 @@ Usage:
   node index.js --reset
   node index.js --dashboard
   node index.js --track      (called by Claude Code Stop hook via stdin JSON)
+  node index.js --classify   (called by Claude Code UserPromptSubmit hook via stdin JSON)
 
 Force routing:
   node index.js --simple  "Format this JSON ..."
@@ -109,7 +150,7 @@ Pass a file without shell substitution (avoids newline collapsing and ARG_MAX li
 Env vars:
   OLLAMA_MODEL             default: mistral        (local simple-task model)
   OLLAMA_REMOTE_HOST       e.g. http://192.168.x.x:11434  (enables medium tier)
-  OLLAMA_REMOTE_MODEL      default: qwen2.5:32b    (remote medium-task model)
+  OLLAMA_REMOTE_MODEL      default: llama3.1:latest (remote medium-task model)
   OLLAMA_PORT              default: 11434
   OLLAMA_SIMPLE_SIZE_LIMIT default: 20000          (chars; simple-keyword prompts above this escalate to tier 2)
   OLLAMA_ORCH_PATH         set in your shell profile for portable CLAUDE.md instructions
@@ -122,14 +163,46 @@ Examples:
     return;
   }
 
-  if (args[0] === '--track') {
-    let sessionId = 'unknown';
+  if (args[0] === '--classify') {
+    let prompt = '';
+    let cwd = '';
     try {
       if (!process.stdin.isTTY) {
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(chunk);
-        const payload = JSON.parse(Buffer.concat(chunks).toString());
+        const payload = parseHookPayload(Buffer.concat(chunks).toString());
+        prompt = payload.prompt || '';
+        cwd = payload.cwd || '';
+      }
+    } catch (err) {
+      logEntry(
+        'WARN',
+        `--classify: failed to parse UserPromptSubmit payload — ${err.message.replace(/\n/g, ' ')}`,
+      );
+      return;
+    }
+    if (!prompt.trim()) return;
+    if (cwd === ORCH_DIR) return;
+    const { complexity, reason } = classifyPrompt(prompt);
+    const kwMatch = reason.match(/"(\w+)"/);
+    const hint = kwMatch ? `kw="${kwMatch[1]}"` : 'length-fallback';
+    const preview = prompt.length > 60 ? prompt.slice(0, 60).trimEnd() + '...' : prompt;
+    // eslint-disable-next-line no-control-regex
+    const safePreview = preview.replace(/[\u0000-\u001f\u007f]/g, ' ');
+    logEntry('CLASSIFY', `${complexity}  ${hint}  "${safePreview}"`);
+    return;
+  }
+
+  if (args[0] === '--track') {
+    let sessionId = 'unknown';
+    let cwd = '';
+    try {
+      if (!process.stdin.isTTY) {
+        const chunks = [];
+        for await (const chunk of process.stdin) chunks.push(chunk);
+        const payload = parseHookPayload(Buffer.concat(chunks).toString());
         sessionId = payload.session_id || 'unknown';
+        cwd = payload.cwd || '';
       }
     } catch (err) {
       logEntry(
@@ -137,6 +210,7 @@ Examples:
         `--track: failed to parse Stop hook payload — ${err.message.replace(/\n/g, ' ')}`,
       );
     }
+    if (cwd === ORCH_DIR) return;
     trackClaudeActivity(sessionId);
     return;
   }

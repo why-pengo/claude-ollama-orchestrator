@@ -26,6 +26,16 @@ describe('assessComplexity — simple tasks', () => {
     assert.equal(assess('Organize these items alphabetically'), 'simple'));
   it('case-insensitive match', () =>
     assert.equal(assess('EXTRACT all class names from this file'), 'simple'));
+  it('summarise (British)', () => assert.equal(assess('Summarise this PR description'), 'simple'));
+  it('summarize (American)', () => assert.equal(assess('Summarize this PR description'), 'simple'));
+  it('count items', () => assert.equal(assess('Count the failing assertions'), 'simple'));
+  it('enumerate fields', () => assert.equal(assess('Enumerate the public fields'), 'simple'));
+  it('outline structure', () =>
+    assert.equal(assess('Outline the sections in this document'), 'simple'));
+  it('tldr', () => assert.equal(assess('Give me a tldr of this issue'), 'simple'));
+  it('draft message', () =>
+    assert.equal(assess('Draft a short error message for this case'), 'simple'));
+  it('stub test', () => assert.equal(assess('Stub a pytest case for this function'), 'simple'));
 });
 
 describe('assessComplexity — medium tasks', () => {
@@ -96,6 +106,14 @@ describe('assessComplexity — simple-keyword size escalation', () => {
       'template',
       'rename',
       'sort',
+      'summarise',
+      'summarize',
+      'count',
+      'enumerate',
+      'outline',
+      'tldr',
+      'draft',
+      'stub',
     ]) {
       assert.equal(assess(`${kw} ${big}`), 'medium', `expected medium for keyword "${kw}"`);
     }

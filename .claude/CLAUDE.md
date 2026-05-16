@@ -86,6 +86,37 @@ Both hooks skip when `cwd` matches the orchestrator's own repo so meta-work on t
 
 ---
 
+## Delegation Playbook (for Claude as planner)
+
+You are the planner. Watch for **mechanical sub-tasks during your work** and delegate them to a local model instead of doing them yourself. The trigger is "I'm about to do X" — not whether the user's prompt contained a keyword. The `UserPromptSubmit` hint only fires when the user's outer prompt matches a simple/medium keyword; most real prompts won't, so this playbook is what closes the gap.
+
+### When to delegate
+
+- About to **Read** a file >500 lines just to list function / class / route names → delegate
+- About to **write a regex** from a stated pattern → delegate
+- About to **draft an error message, log line, or short stub** → delegate
+- About to **summarise** a long PR diff, issue thread, or log file → delegate
+- About to **convert** data between formats (CSV ↔ JSON, etc.) → delegate
+
+Invocation:
+
+```bash
+node $OLLAMA_ORCH_PATH --simple --file <path> "<instruction>"   # with file context
+node $OLLAMA_ORCH_PATH --simple "<instruction>"                 # text-only
+```
+
+### When NOT to delegate
+
+- Deterministic CLI ops (`make format`, `black`, `npm test`) — run the tool yourself.
+- Anything that touches real code semantics (refactor, debug, design) — you keep it.
+- Anything where a wrong answer costs more than doing it yourself.
+
+### Review before using
+
+The local model produces text — you remain accountable for what lands in the codebase. Read its output, sanity-check it, edit if needed. If it's wrong, do the task yourself and note whether the prompt needed sharpening or the task wasn't really mechanical.
+
+---
+
 ## Using the Orchestrator from Other Projects
 
 Add a task routing section to `.claude/CLAUDE.md` in the target project. Example snippet:
@@ -98,6 +129,9 @@ For generative simple tasks (extract, convert, summarise), use:
 
 For complex tasks (debug, design, refactor), handle in Claude Code directly.
 Do NOT send deterministic operations (make format, black, npm test) to Ollama.
+
+See the Delegation Playbook in the orchestrator repo's .claude/CLAUDE.md
+for concrete triggers ("about to do X → delegate").
 ```
 
 Tested on health_track PR #6 (2026-05-09): "Extract all API routes from bp.py" → Ollama → mistral → correct table in 19s.

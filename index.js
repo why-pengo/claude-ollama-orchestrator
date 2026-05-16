@@ -207,7 +207,7 @@ Examples:
     if (kwMatch && (complexity === 'simple' || complexity === 'medium')) {
       const flag = complexity === 'simple' ? '--simple ' : '';
       console.log(
-        `[orchestrator] This prompt looks offloadable to a local model ` +
+        `[orchestrator] This prompt looks offloadable to Ollama ` +
           `(${complexity}, kw="${kwMatch[1]}"). Before doing it yourself, consider:\n` +
           `  node $OLLAMA_ORCH_PATH ${flag}--file <path> "<instruction>"\n` +
           `Review the model's output before using it.`,

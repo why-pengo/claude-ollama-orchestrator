@@ -9,7 +9,7 @@ Every request is assessed against three keyword lists:
 | Tier                 | Triggered by                                                                                                             | Node                              | Cost                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | --------------------- |
 | **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise`, `organize`                    | Local Ollama (e.g. mistral 7B)    | Free                  |
-| **Medium** (tier 2)  | `explain`, `reason`                                                                                                      | Remote Ollama (e.g. Qwen 2.5 32B) | Free                  |
+| **Medium** (tier 2)  | `explain`, `reason`                                                                                                      | Remote Ollama (e.g. Llama 3.1 8B) | Free                  |
 | **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, `debug`, `refactor`, `design`, `implement`, `optimise`, `optimize` | Claude Code session               | Your Pro subscription |
 
 Simple tasks stream tokens directly to your terminal. Medium tasks do too — when a remote Ollama node is configured and available; otherwise they cascade to Claude Code. Complex tasks always print a ready-to-paste prompt for your Claude Code session.
@@ -20,11 +20,12 @@ If you have Claude Pro / Max, you already have Claude via Claude Code — a sepa
 
 ## Model benchmarks (Apple M4 Pro)
 
-| Model         | Tier   | Size  | Cold start | Warm | Notes                         |
-| ------------- | ------ | ----- | ---------- | ---- | ----------------------------- |
-| `mistral`     | Simple | 4 GB  | ~20s       | ~3s  | Best default balance          |
-| `llama3.2:3b` | Simple | 2 GB  | ~5s        | <1s  | Fastest, good for high volume |
-| `qwen2.5:32b` | Medium | 19 GB | ~30s       | ~10s | Best for medium-tier (remote) |
+| Model             | Tier   | Size  | Cold start | Warm | Notes                         |
+| ----------------- | ------ | ----- | ---------- | ---- | ----------------------------- |
+| `mistral`         | Simple | 4 GB  | ~20s       | ~3s  | Best default balance          |
+| `llama3.2:3b`     | Simple | 2 GB  | ~5s        | <1s  | Fastest, good for high volume |
+| `llama3.1:latest` | Medium | 5 GB  | ~10s       | ~3s  | Sensible default for tier 2   |
+| `qwen3.6:latest`  | Medium | 24 GB | ~35s       | ~10s | More capable, larger download |
 
 Cold start is a one-time cost per `ollama serve` session. Run a throwaway warm-up request if first-request latency matters.
 
@@ -83,20 +84,20 @@ make reset   # reset stats
 
 ## Environment variables
 
-| Variable              | Default       | Description                                                                             |
-| --------------------- | ------------- | --------------------------------------------------------------------------------------- |
-| `OLLAMA_MODEL`        | `mistral`     | Model for simple (tier 1) tasks                                                         |
-| `OLLAMA_REMOTE_HOST`  | —             | URL of remote Ollama node — enables medium tier (e.g. `http://192.168.1.10:11434`)      |
-| `OLLAMA_REMOTE_MODEL` | `qwen2.5:32b` | Model for medium (tier 2) tasks                                                         |
-| `OLLAMA_PORT`         | `11434`       | Local Ollama port (used by the dashboard health check)                                  |
-| `OLLAMA_ORCH_PATH`    | —             | Full path to `index.js` — set in your shell profile for portable CLAUDE.md instructions |
+| Variable              | Default           | Description                                                                             |
+| --------------------- | ----------------- | --------------------------------------------------------------------------------------- |
+| `OLLAMA_MODEL`        | `mistral`         | Model for simple (tier 1) tasks                                                         |
+| `OLLAMA_REMOTE_HOST`  | —                 | URL of remote Ollama node — enables medium tier (e.g. `http://192.168.1.10:11434`)      |
+| `OLLAMA_REMOTE_MODEL` | `llama3.1:latest` | Model for medium (tier 2) tasks                                                         |
+| `OLLAMA_PORT`         | `11434`           | Local Ollama port (used by the dashboard health check)                                  |
+| `OLLAMA_ORCH_PATH`    | —                 | Full path to `index.js` — set in your shell profile for portable CLAUDE.md instructions |
 
 Example shell profile entry:
 
 ```bash
 export OLLAMA_MODEL=mistral
 export OLLAMA_REMOTE_HOST=http://192.168.1.10:11434
-export OLLAMA_REMOTE_MODEL=qwen2.5:32b
+export OLLAMA_REMOTE_MODEL=llama3.1:latest
 export OLLAMA_ORCH_PATH=/path/to/claude-ollama-orchestrator/index.js
 ```
 

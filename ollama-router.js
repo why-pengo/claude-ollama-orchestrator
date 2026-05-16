@@ -6,21 +6,11 @@ import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { insertRequest, migrateFromRoutes } from './stats-db.js';
+import { classifyPrompt } from './classifier.js';
+import { logEntry as log } from './logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const STATS_FILE = join(__dirname, 'orchestrator-stats.json');
-const LOG_FILE = join(__dirname, 'orchestrator.log');
-
-// Simple-keyword tasks larger than this are escalated to tier 2 (remote Ollama)
-// to avoid OOM / timeout on the local model. Override with OLLAMA_SIMPLE_SIZE_LIMIT.
-const _rawLimit = Number(process.env.OLLAMA_SIMPLE_SIZE_LIMIT);
-const SIMPLE_SIZE_LIMIT = Number.isFinite(_rawLimit) && _rawLimit > 0 ? _rawLimit : 20_000;
-
-function log(tag, message) {
-  const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
-  console.log(line);
-  fs.appendFileSync(LOG_FILE, line + '\n');
-}
+const STATS_FILE = process.env.STATS_FILE_PATH || join(__dirname, 'orchestrator-stats.json');
 
 function makeDefaultStats() {
   return {
@@ -62,7 +52,7 @@ class TaskRouter {
     this.ollamaUrl = ollamaUrl;
     this.ollamaModel = process.env.OLLAMA_MODEL || 'mistral';
     this.remoteUrl = process.env.OLLAMA_REMOTE_HOST || null;
-    this.remoteModel = process.env.OLLAMA_REMOTE_MODEL || 'qwen2.5:32b';
+    this.remoteModel = process.env.OLLAMA_REMOTE_MODEL || 'llama3.1:latest';
     this.stats = loadStats();
   }
 
@@ -207,63 +197,7 @@ class TaskRouter {
 
   // ── Complexity assessment ─────────────────────────────────────────────────────
   assessComplexityWithReason(prompt) {
-    const simple = [
-      'format',
-      'extract',
-      'convert',
-      'parse',
-      'organise',
-      'organize',
-      'list',
-      'template',
-      'rename',
-      'sort',
-    ];
-    const medium = ['explain', 'reason'];
-    const complex = [
-      'architect',
-      'security',
-      'tradeoff',
-      'plan',
-      'clean',
-      'debug',
-      'refactor',
-      'design',
-      'implement',
-      'optimise',
-      'optimize',
-    ];
-
-    const lower = prompt.toLowerCase();
-
-    const complexMatch = complex.find((kw) => lower.includes(kw));
-    if (complexMatch) {
-      return { complexity: 'complex', reason: `matched keyword "${complexMatch}" (complex list)` };
-    }
-
-    const mediumMatch = medium.find((kw) => lower.includes(kw));
-    if (mediumMatch) {
-      return { complexity: 'medium', reason: `matched keyword "${mediumMatch}" (medium list)` };
-    }
-
-    const simpleMatch = simple.find((kw) => lower.includes(kw));
-    if (simpleMatch) {
-      if (prompt.length > SIMPLE_SIZE_LIMIT) {
-        return {
-          complexity: 'medium',
-          reason: `matched keyword "${simpleMatch}" (simple list) but prompt length ${prompt.length} > ${SIMPLE_SIZE_LIMIT} chars — escalated to tier 2`,
-        };
-      }
-      return { complexity: 'simple', reason: `matched keyword "${simpleMatch}" (simple list)` };
-    }
-
-    if (prompt.length > 500) {
-      return {
-        complexity: 'complex',
-        reason: `prompt length ${prompt.length} > 500 chars (length fallback)`,
-      };
-    }
-    return { complexity: 'simple', reason: `no keywords matched, length ≤ 500 (length fallback)` };
+    return classifyPrompt(prompt);
   }
 
   assessComplexity(prompt) {
@@ -314,7 +248,21 @@ class TaskRouter {
   }
 }
 
-export { SIMPLE_SIZE_LIMIT };
+// Re-export for backward compatibility — new code should import these from their
+// dedicated modules (./classifier.js, ./logger.js) to avoid pulling in stats-db.
+export { classifyPrompt, SIMPLE_SIZE_LIMIT } from './classifier.js';
+export { logEntry } from './logger.js';
+
+export function trackClaudeActivity(sessionId = 'unknown') {
+  const stats = loadStats();
+  const detail = sessionId !== 'unknown' ? ` session=${sessionId}` : '';
+  log('CLAUDE', `response completed${detail}`);
+  stats.claudeCodeReferrals = (stats.claudeCodeReferrals || 0) + 1;
+  // Keep totalRequests in lockstep so dashboard percentages don't drift between loads.
+  stats.totalRequests = (stats.totalRequests || 0) + 1;
+  insertRequest({ ts: Date.now(), route: 'claude-code', ms: 0, label: 'stop-hook' });
+  saveStats(stats);
+}
 export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
 
 export function estimateSavings(chars) {

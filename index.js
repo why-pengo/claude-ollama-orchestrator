@@ -2,10 +2,60 @@
 // index.js
 
 import fs from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ClaudeOrchestrator from './claude-orchestrator.js';
-import { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } from './ollama-router.js';
+// classifier + logger have no stats-db dependency, so the --classify hook can use
+// them without paying the better-sqlite3 init cost on every prompt submission.
+import { classifyPrompt } from './classifier.js';
+import { logEntry } from './logger.js';
+
+// Resolve symlinks once at module load so the cwd filter still matches when Claude
+// Code runs from a symlinked copy of this repo.
+function resolveRealPath(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+const ORCH_DIR = resolveRealPath(dirname(fileURLToPath(import.meta.url)));
+
+// JSON.parse rejects literal control chars in string values (e.g. unescaped \t or \n in the
+// prompt field of Claude Code hook payloads). This retries with those chars properly escaped.
+function parseHookPayload(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    let inString = false;
+    let prevBackslash = false;
+    let out = '';
+    for (const ch of raw) {
+      const code = ch.charCodeAt(0);
+      if (prevBackslash) {
+        prevBackslash = false;
+        out += ch;
+        continue;
+      }
+      if (ch === '\\' && inString) {
+        prevBackslash = true;
+        out += ch;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        out += ch;
+        continue;
+      }
+      if (inString && code < 0x20) {
+        out +=
+          { 9: '\\t', 10: '\\n', 13: '\\r' }[code] ?? `\\u${code.toString(16).padStart(4, '0')}`;
+      } else {
+        out += ch;
+      }
+    }
+    return JSON.parse(out);
+  }
+}
 
 const mySkills = {
   'code-review': `You are an expert code reviewer.
@@ -27,7 +77,11 @@ const myRules = {
   accuracy: 'Double-check facts before presenting them.',
 };
 
-const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
+// Lazy-load to keep --classify / --help paths free of stats-db / claude-orchestrator imports.
+async function createOrchestrator() {
+  const { default: ClaudeOrchestrator } = await import('./claude-orchestrator.js');
+  return new ClaudeOrchestrator(mySkills, myRules);
+}
 
 export function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
@@ -87,6 +141,8 @@ Usage:
   node index.js --stats
   node index.js --reset
   node index.js --dashboard
+  node index.js --track      (called by Claude Code Stop hook via stdin JSON)
+  node index.js --classify   (called by Claude Code UserPromptSubmit hook via stdin JSON)
 
 Force routing:
   node index.js --simple  "Format this JSON ..."
@@ -103,7 +159,7 @@ Pass a file without shell substitution (avoids newline collapsing and ARG_MAX li
 Env vars:
   OLLAMA_MODEL             default: mistral        (local simple-task model)
   OLLAMA_REMOTE_HOST       e.g. http://192.168.x.x:11434  (enables medium tier)
-  OLLAMA_REMOTE_MODEL      default: qwen2.5:32b    (remote medium-task model)
+  OLLAMA_REMOTE_MODEL      default: llama3.1:latest (remote medium-task model)
   OLLAMA_PORT              default: 11434
   OLLAMA_SIMPLE_SIZE_LIMIT default: 20000          (chars; simple-keyword prompts above this escalate to tier 2)
   OLLAMA_ORCH_PATH         set in your shell profile for portable CLAUDE.md instructions
@@ -113,6 +169,60 @@ Examples:
   node index.js --simple --file data.csv "Convert this to JSON"
   node index.js --file routers/bp.py "Extract all API route paths and HTTP methods"
     `);
+    return;
+  }
+
+  if (args[0] === '--classify') {
+    let prompt = '';
+    let cwd = '';
+    try {
+      if (!process.stdin.isTTY) {
+        const chunks = [];
+        for await (const chunk of process.stdin) chunks.push(chunk);
+        const payload = parseHookPayload(Buffer.concat(chunks).toString());
+        prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+        cwd = typeof payload.cwd === 'string' ? payload.cwd : '';
+      }
+    } catch (err) {
+      logEntry(
+        'WARN',
+        `--classify: failed to parse UserPromptSubmit payload — ${err.message.replace(/\n/g, ' ')}`,
+      );
+      return;
+    }
+    if (!prompt.trim()) return;
+    if (cwd && resolveRealPath(cwd) === ORCH_DIR) return;
+    const { complexity, reason } = classifyPrompt(prompt);
+    const kwMatch = reason.match(/"(\w+)"/);
+    const hint = kwMatch ? `kw="${kwMatch[1]}"` : 'length-fallback';
+    const preview = prompt.length > 60 ? prompt.slice(0, 60).trimEnd() + '...' : prompt;
+    // eslint-disable-next-line no-control-regex
+    const safePreview = preview.replace(/[\u0000-\u001f\u007f]/g, ' ');
+    logEntry('CLASSIFY', `${complexity}  ${hint}  "${safePreview}"`);
+    return;
+  }
+
+  if (args[0] === '--track') {
+    let sessionId = 'unknown';
+    let cwd = '';
+    try {
+      if (!process.stdin.isTTY) {
+        const chunks = [];
+        for await (const chunk of process.stdin) chunks.push(chunk);
+        const payload = parseHookPayload(Buffer.concat(chunks).toString());
+        sessionId = typeof payload.session_id === 'string' ? payload.session_id : 'unknown';
+        cwd = typeof payload.cwd === 'string' ? payload.cwd : '';
+      }
+    } catch (err) {
+      logEntry(
+        'WARN',
+        `--track: failed to parse Stop hook payload — ${err.message.replace(/\n/g, ' ')}`,
+      );
+      return;
+    }
+    if (cwd && resolveRealPath(cwd) === ORCH_DIR) return;
+    const { trackClaudeActivity } = await import('./ollama-router.js');
+    trackClaudeActivity(sessionId);
     return;
   }
 
@@ -129,6 +239,8 @@ Examples:
   }
 
   if (args[0] === '--stats') {
+    const { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } = await import('./ollama-router.js');
+    const orchestrator = await createOrchestrator();
     const stats = orchestrator.getStats();
     const simple = stats.simpleCalls || 0;
     const medium = stats.mediumCalls || 0;
@@ -190,6 +302,7 @@ Examples:
   }
 
   if (args[0] === '--reset') {
+    const orchestrator = await createOrchestrator();
     orchestrator.reset();
     console.log('Stats reset.');
     return;
@@ -218,6 +331,7 @@ Examples:
   }
 
   if (dryRun) {
+    const orchestrator = await createOrchestrator();
     let complexity, reason;
     if (force) {
       complexity = force;
@@ -248,6 +362,7 @@ Examples:
   }
 
   try {
+    const orchestrator = await createOrchestrator();
     await orchestrator.process(prompt, force);
   } catch (err) {
     console.error('[ERROR]', err.message);

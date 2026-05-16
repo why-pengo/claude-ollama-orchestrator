@@ -2,7 +2,7 @@
 // Renders three tier cards + log feed using ink v7 + React 19. No JSX.
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { render, Box, Text, useInput, useApp, useWindowSize, useStdout } from 'ink';
+import { render, Box, Text, useInput, useApp, useWindowSize } from 'ink';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +46,7 @@ function LocalTierCard({ calls, pct, avg, fb, online }) {
 
 // ── Tier 2: Remote Ollama ─────────────────────────────────────────────────────
 function RemoteTierCard({ calls, pct, avg, fb, online }) {
-  const model = process.env.OLLAMA_REMOTE_MODEL || 'qwen2.5:32b';
+  const model = process.env.OLLAMA_REMOTE_MODEL || 'llama3.1:latest';
   const host = (REMOTE_URL || '').replace(/^https?:\/\//, '');
   const fbTotal = (fb.down || 0) + (fb.timeout || 0) + (fb.error || 0);
   const { color, char, label } = statusDot(online);
@@ -120,7 +120,7 @@ function localiseLogLine(line) {
   });
 }
 
-function LogPanel({ lines, maxLines, maxLineLen }) {
+function LogPanel({ lines, maxLines, maxLineLen, width }) {
   const visible = lines.slice(0, maxLines);
 
   return h(
@@ -128,6 +128,7 @@ function LogPanel({ lines, maxLines, maxLineLen }) {
     {
       flexDirection: 'column',
       flexGrow: 1,
+      width,
       borderStyle: 'round',
       borderColor: 'cyan',
       paddingX: 1,
@@ -147,10 +148,14 @@ function LogPanel({ lines, maxLines, maxLineLen }) {
           else if (tag === 'OLLAMA') color = 'green';
           else if (tag === 'ROUTER') color = 'blue';
           else if (tag === 'REQUEST') color = 'cyan';
+          else if (tag === 'CLAUDE') color = 'yellow';
+          else if (tag === 'CLASSIFY') color = 'blueBright';
+          else if (tag === 'WARN') color = 'yellow';
+          else if (tag === 'ERROR') color = 'red';
           const localLine = localiseLogLine(line);
           const trimmed =
             localLine.length > maxLineLen ? `${localLine.slice(0, maxLineLen - 1)}…` : localLine;
-          return h(Text, { key: i, color }, trimmed);
+          return h(Text, { key: i, color, wrap: 'truncate' }, trimmed);
         })),
   );
 }
@@ -216,22 +221,8 @@ function Dashboard() {
   });
   const { exit } = useApp();
   const { columns: cols = 80, rows = 24 } = useWindowSize();
-  const { stdout: inkStdout } = useStdout();
   const localAbortRef = useRef(null);
   const remoteAbortRef = useRef(null);
-
-  // enter alt-screen + hide cursor on mount; restore on React unmount and process exit
-  useEffect(() => {
-    const out = inkStdout ?? process.stdout;
-    if (!out.isTTY) return;
-    const restore = () => out.write('\x1b[?1049l\x1b[?25h');
-    out.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
-    process.on('exit', restore);
-    return () => {
-      process.off('exit', restore);
-      restore();
-    };
-  }, [inkStdout]);
 
   useEffect(() => {
     function tick() {
@@ -378,7 +369,7 @@ function Dashboard() {
       h(Text, { color: 'green' }, `~$${estSavings} saved`),
       h(Text, { dimColor: true }, `  ($${SAVINGS_RATE_PER_M_TOKENS}/M)`),
     ),
-    h(LogPanel, { lines: logLines, maxLines: logMaxLines, maxLineLen }),
+    h(LogPanel, { lines: logLines, maxLines: logMaxLines, maxLineLen, width: cols }),
     h(
       Box,
       { paddingX: 2 },
@@ -400,6 +391,20 @@ function Dashboard() {
 }
 
 export default async function launchDashboard() {
-  const { waitUntilExit } = render(h(Dashboard, null));
-  await waitUntilExit();
+  const out = process.stdout;
+  const isTTY = out.isTTY;
+  const restore = () => {
+    if (isTTY) out.write('\x1b[?1049l\x1b[?25h');
+  };
+
+  if (isTTY) out.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
+  process.on('exit', restore);
+
+  try {
+    const { waitUntilExit } = render(h(Dashboard, null));
+    await waitUntilExit();
+  } finally {
+    process.off('exit', restore);
+    restore();
+  }
 }

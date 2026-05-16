@@ -314,6 +314,19 @@ class TaskRouter {
   }
 }
 
+export function logEntry(tag, message) {
+  log(tag, message);
+}
+
+export function trackClaudeActivity(sessionId = 'unknown') {
+  const stats = loadStats();
+  const detail = sessionId !== 'unknown' ? ` session=${sessionId}` : '';
+  log('CLAUDE', `response completed${detail}`);
+  stats.claudeCodeReferrals = (stats.claudeCodeReferrals || 0) + 1;
+  insertRequest({ ts: Date.now(), route: 'claude-code', ms: 0, label: 'stop-hook' });
+  saveStats(stats);
+}
+
 export { SIMPLE_SIZE_LIMIT };
 export const SAVINGS_RATE_PER_M_TOKENS = 3.0;
 

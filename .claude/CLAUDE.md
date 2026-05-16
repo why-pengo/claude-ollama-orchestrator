@@ -76,6 +76,12 @@ tail -f orchestrator.log | grep -E "REQUEST|ROUTER|OLLAMA|CLAUDE|ERROR"
 Stats: `node index.js --stats`
 Dashboard: `node index.js --dashboard`
 
+### Claude Code activity tracking
+
+A global `Stop` hook in `~/.claude/settings.json` calls `node $OLLAMA_ORCH_PATH --track` after every Claude Code response, logging a `[CLAUDE]` entry and incrementing `claudeCodeReferrals`. The hook silently no-ops if `OLLAMA_ORCH_PATH` is unset.
+
+This gives the dashboard visibility into direct Claude Code work that never passes through `index.js` (complex tasks, real-time sessions, etc.).
+
 ---
 
 ## Using the Orchestrator from Other Projects

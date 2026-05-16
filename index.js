@@ -5,7 +5,12 @@ import fs from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ClaudeOrchestrator from './claude-orchestrator.js';
-import { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } from './ollama-router.js';
+import {
+  estimateSavings,
+  SAVINGS_RATE_PER_M_TOKENS,
+  trackClaudeActivity,
+  logEntry,
+} from './ollama-router.js';
 
 const mySkills = {
   'code-review': `You are an expert code reviewer.
@@ -87,6 +92,7 @@ Usage:
   node index.js --stats
   node index.js --reset
   node index.js --dashboard
+  node index.js --track      (called by Claude Code Stop hook via stdin JSON)
 
 Force routing:
   node index.js --simple  "Format this JSON ..."
@@ -113,6 +119,25 @@ Examples:
   node index.js --simple --file data.csv "Convert this to JSON"
   node index.js --file routers/bp.py "Extract all API route paths and HTTP methods"
     `);
+    return;
+  }
+
+  if (args[0] === '--track') {
+    let sessionId = 'unknown';
+    try {
+      if (!process.stdin.isTTY) {
+        const chunks = [];
+        for await (const chunk of process.stdin) chunks.push(chunk);
+        const payload = JSON.parse(Buffer.concat(chunks).toString());
+        sessionId = payload.session_id || 'unknown';
+      }
+    } catch (err) {
+      logEntry(
+        'WARN',
+        `--track: failed to parse Stop hook payload — ${err.message.replace(/\n/g, ' ')}`,
+      );
+    }
+    trackClaudeActivity(sessionId);
     return;
   }
 

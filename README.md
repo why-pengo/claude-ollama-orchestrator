@@ -20,12 +20,12 @@ If you have Claude Pro / Max, you already have Claude via Claude Code — a sepa
 
 ## Model benchmarks (Apple M4 Pro)
 
-| Model         | Tier   | Size  | Cold start | Warm | Notes                         |
-| ------------- | ------ | ----- | ---------- | ---- | ----------------------------- |
-| `mistral`     | Simple | 4 GB  | ~20s       | ~3s  | Best default balance          |
-| `llama3.2:3b` | Simple | 2 GB  | ~5s        | <1s  | Fastest, good for high volume |
-| `llama3.1`    | Medium | 5 GB  | ~10s       | ~3s  | Sensible default for tier 2   |
-| `qwen3.6`     | Medium | 24 GB | ~35s       | ~10s | More capable, larger download |
+| Model             | Tier   | Size  | Cold start | Warm | Notes                         |
+| ----------------- | ------ | ----- | ---------- | ---- | ----------------------------- |
+| `mistral`         | Simple | 4 GB  | ~20s       | ~3s  | Best default balance          |
+| `llama3.2:3b`     | Simple | 2 GB  | ~5s        | <1s  | Fastest, good for high volume |
+| `llama3.1:latest` | Medium | 5 GB  | ~10s       | ~3s  | Sensible default for tier 2   |
+| `qwen3.6:latest`  | Medium | 24 GB | ~35s       | ~10s | More capable, larger download |
 
 Cold start is a one-time cost per `ollama serve` session. Run a throwaway warm-up request if first-request latency matters.
 

@@ -4,16 +4,21 @@
 import fs from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ClaudeOrchestrator from './claude-orchestrator.js';
-import {
-  estimateSavings,
-  SAVINGS_RATE_PER_M_TOKENS,
-  trackClaudeActivity,
-  logEntry,
-  classifyPrompt,
-} from './ollama-router.js';
+// classifier + logger have no stats-db dependency, so the --classify hook can use
+// them without paying the better-sqlite3 init cost on every prompt submission.
+import { classifyPrompt } from './classifier.js';
+import { logEntry } from './logger.js';
 
-const ORCH_DIR = dirname(fileURLToPath(import.meta.url));
+// Resolve symlinks once at module load so the cwd filter still matches when Claude
+// Code runs from a symlinked copy of this repo.
+function resolveRealPath(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+const ORCH_DIR = resolveRealPath(dirname(fileURLToPath(import.meta.url)));
 
 // JSON.parse rejects literal control chars in string values (e.g. unescaped \t or \n in the
 // prompt field of Claude Code hook payloads). This retries with those chars properly escaped.
@@ -72,7 +77,11 @@ const myRules = {
   accuracy: 'Double-check facts before presenting them.',
 };
 
-const orchestrator = new ClaudeOrchestrator(mySkills, myRules);
+// Lazy-load to keep --classify / --help paths free of stats-db / claude-orchestrator imports.
+async function createOrchestrator() {
+  const { default: ClaudeOrchestrator } = await import('./claude-orchestrator.js');
+  return new ClaudeOrchestrator(mySkills, myRules);
+}
 
 export function parseArgs(rawArgs) {
   const remaining = [...rawArgs];
@@ -171,8 +180,8 @@ Examples:
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(chunk);
         const payload = parseHookPayload(Buffer.concat(chunks).toString());
-        prompt = payload.prompt || '';
-        cwd = payload.cwd || '';
+        prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+        cwd = typeof payload.cwd === 'string' ? payload.cwd : '';
       }
     } catch (err) {
       logEntry(
@@ -182,7 +191,7 @@ Examples:
       return;
     }
     if (!prompt.trim()) return;
-    if (cwd === ORCH_DIR) return;
+    if (cwd && resolveRealPath(cwd) === ORCH_DIR) return;
     const { complexity, reason } = classifyPrompt(prompt);
     const kwMatch = reason.match(/"(\w+)"/);
     const hint = kwMatch ? `kw="${kwMatch[1]}"` : 'length-fallback';
@@ -201,16 +210,18 @@ Examples:
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(chunk);
         const payload = parseHookPayload(Buffer.concat(chunks).toString());
-        sessionId = payload.session_id || 'unknown';
-        cwd = payload.cwd || '';
+        sessionId = typeof payload.session_id === 'string' ? payload.session_id : 'unknown';
+        cwd = typeof payload.cwd === 'string' ? payload.cwd : '';
       }
     } catch (err) {
       logEntry(
         'WARN',
         `--track: failed to parse Stop hook payload — ${err.message.replace(/\n/g, ' ')}`,
       );
+      return;
     }
-    if (cwd === ORCH_DIR) return;
+    if (cwd && resolveRealPath(cwd) === ORCH_DIR) return;
+    const { trackClaudeActivity } = await import('./ollama-router.js');
     trackClaudeActivity(sessionId);
     return;
   }
@@ -228,6 +239,8 @@ Examples:
   }
 
   if (args[0] === '--stats') {
+    const { estimateSavings, SAVINGS_RATE_PER_M_TOKENS } = await import('./ollama-router.js');
+    const orchestrator = await createOrchestrator();
     const stats = orchestrator.getStats();
     const simple = stats.simpleCalls || 0;
     const medium = stats.mediumCalls || 0;
@@ -289,6 +302,7 @@ Examples:
   }
 
   if (args[0] === '--reset') {
+    const orchestrator = await createOrchestrator();
     orchestrator.reset();
     console.log('Stats reset.');
     return;
@@ -317,6 +331,7 @@ Examples:
   }
 
   if (dryRun) {
+    const orchestrator = await createOrchestrator();
     let complexity, reason;
     if (force) {
       complexity = force;
@@ -347,6 +362,7 @@ Examples:
   }
 
   try {
+    const orchestrator = await createOrchestrator();
     await orchestrator.process(prompt, force);
   } catch (err) {
     console.error('[ERROR]', err.message);

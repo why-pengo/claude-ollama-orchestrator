@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { classifyPrompt } from '../ollama-router.js';
+import { classifyPrompt } from '../classifier.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INDEX = join(__dirname, '..', 'index.js');
@@ -57,6 +57,13 @@ describe('classifyPrompt — standalone classifier (no TaskRouter)', () => {
   it('falls back to complex for long non-keyword prompts', () => {
     const { complexity } = classifyPrompt('hi '.repeat(300));
     assert.equal(complexity, 'complex');
+  });
+
+  it('coerces non-string input without throwing', () => {
+    // Hook payloads come from external input — a null/number/object prompt must not crash.
+    for (const bad of [null, undefined, 42, { not: 'a string' }, true]) {
+      assert.doesNotThrow(() => classifyPrompt(bad));
+    }
   });
 });
 

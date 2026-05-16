@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import fs from 'node:fs';
 import { classifyPrompt } from '../classifier.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -92,29 +93,80 @@ describe('parseHookPayload — control character handling', () => {
 
 describe('--classify and --track skip when cwd is the orchestrator repo', () => {
   const orchDir = join(__dirname, '..');
+  const clearLog = () => {
+    try {
+      fs.writeFileSync(TMP_LOG, '');
+    } catch {
+      // file doesn't exist yet — nothing to clear
+    }
+  };
 
-  it('--classify exits without logging when cwd matches ORCH_DIR', () => {
+  it('--classify exits silently when cwd matches ORCH_DIR', () => {
+    clearLog();
     const r = runCli(
       '--classify',
       JSON.stringify({ session_id: 'abc', prompt: 'extract values', cwd: orchDir }),
     );
     assert.equal(r.status, 0);
-    // No CLASSIFY entry should be emitted; the function returns early.
-    assert.ok(!r.stdout.includes('[CLASSIFY]'), `unexpected log: ${r.stdout}`);
+    assert.equal(r.stdout, '', `unexpected stdout: ${r.stdout}`);
+    const logContent = fs.existsSync(TMP_LOG) ? fs.readFileSync(TMP_LOG, 'utf8') : '';
+    assert.ok(!logContent.includes('[CLASSIFY]'), `unexpected log entry: ${logContent}`);
   });
 
-  it('--track exits without logging when cwd matches ORCH_DIR', () => {
+  it('--track exits silently when cwd matches ORCH_DIR', () => {
+    clearLog();
     const r = runCli('--track', JSON.stringify({ session_id: 'abc', cwd: orchDir }));
     assert.equal(r.status, 0);
-    assert.ok(!r.stdout.includes('[CLAUDE]'), `unexpected log: ${r.stdout}`);
+    assert.equal(r.stdout, '', `unexpected stdout: ${r.stdout}`);
   });
 
-  it('--classify still logs when cwd is a different repo', () => {
+  it('--classify writes [CLASSIFY] to the log file (not stdout) when cwd differs', () => {
+    clearLog();
     const r = runCli(
       '--classify',
       JSON.stringify({ session_id: 'abc', prompt: 'extract values', cwd: '/tmp/other-repo' }),
     );
     assert.equal(r.status, 0);
-    assert.ok(r.stdout.includes('[CLASSIFY]'), `expected CLASSIFY entry in: ${r.stdout}`);
+    assert.ok(!r.stdout.includes('[CLASSIFY]'), `[CLASSIFY] leaked to stdout: ${r.stdout}`);
+    const logContent = fs.readFileSync(TMP_LOG, 'utf8');
+    assert.ok(logContent.includes('[CLASSIFY]'), `expected [CLASSIFY] in log: ${logContent}`);
+  });
+});
+
+describe('--classify additionalContext nudge', () => {
+  const cwd = '/tmp/other-repo';
+
+  it('emits an [orchestrator] hint for keyword-matched simple prompts', () => {
+    const r = runCli('--classify', JSON.stringify({ prompt: 'extract route paths', cwd }));
+    assert.equal(r.status, 0);
+    assert.ok(
+      r.stdout.includes('[orchestrator]'),
+      `expected orchestrator hint in stdout: ${r.stdout}`,
+    );
+    assert.ok(r.stdout.includes('--simple'), `expected --simple flag in hint: ${r.stdout}`);
+    assert.ok(r.stdout.includes('kw="extract"'), `expected kw="extract" in hint: ${r.stdout}`);
+  });
+
+  it('emits an [orchestrator] hint for keyword-matched medium prompts (no --simple flag)', () => {
+    const r = runCli('--classify', JSON.stringify({ prompt: 'explain how this works', cwd }));
+    assert.equal(r.status, 0);
+    assert.ok(r.stdout.includes('[orchestrator]'), `expected hint: ${r.stdout}`);
+    assert.ok(!r.stdout.includes('--simple'), `--simple should not appear for medium: ${r.stdout}`);
+    assert.ok(r.stdout.includes('kw="explain"'), `expected kw="explain": ${r.stdout}`);
+  });
+
+  it('stays silent (no hint) for length-fallback prompts', () => {
+    const r = runCli('--classify', JSON.stringify({ prompt: 'work on issue 14', cwd }));
+    assert.equal(r.status, 0);
+    assert.ok(!r.stdout.includes('[orchestrator]'), `unexpected hint: ${r.stdout}`);
+  });
+
+  it('stays silent (no hint) for keyword-matched complex prompts', () => {
+    const r = runCli('--classify', JSON.stringify({ prompt: 'refactor the auth module', cwd }));
+    assert.equal(r.status, 0);
+    assert.ok(
+      !r.stdout.includes('[orchestrator]'),
+      `complex prompts should not be nudged: ${r.stdout}`,
+    );
   });
 });

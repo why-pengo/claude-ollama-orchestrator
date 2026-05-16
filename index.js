@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // classifier + logger have no stats-db dependency, so the --classify hook can use
 // them without paying the better-sqlite3 init cost on every prompt submission.
 import { classifyPrompt } from './classifier.js';
-import { logEntry } from './logger.js';
+import { logEntry, logToFile } from './logger.js';
 
 // Resolve symlinks once at module load so the cwd filter still matches when Claude
 // Code runs from a symlinked copy of this repo.
@@ -198,7 +198,21 @@ Examples:
     const preview = prompt.length > 60 ? prompt.slice(0, 60).trimEnd() + '...' : prompt;
     // eslint-disable-next-line no-control-regex
     const safePreview = preview.replace(/[\u0000-\u001f\u007f]/g, ' ');
-    logEntry('CLASSIFY', `${complexity}  ${hint}  "${safePreview}"`);
+    // File-only — Claude Code injects hook stdout as additionalContext, so we
+    // keep the raw audit line out of the model's prompt view.
+    logToFile('CLASSIFY', `${complexity}  ${hint}  "${safePreview}"`);
+    // Nudge Claude via additionalContext only when the classifier is confident
+    // (keyword match) AND the work is plausibly offloadable (simple or medium).
+    // Length-fallback and complex stay silent.
+    if (kwMatch && (complexity === 'simple' || complexity === 'medium')) {
+      const flag = complexity === 'simple' ? '--simple ' : '';
+      console.log(
+        `[orchestrator] This prompt looks offloadable to Ollama ` +
+          `(${complexity}, kw="${kwMatch[1]}"). Before doing it yourself, consider:\n` +
+          `  node $OLLAMA_ORCH_PATH ${flag}--file <path> "<instruction>"\n` +
+          `Review the model's output before using it.`,
+      );
+    }
     return;
   }
 

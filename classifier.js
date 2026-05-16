@@ -16,6 +16,14 @@ const SIMPLE_KEYWORDS = [
   'template',
   'rename',
   'sort',
+  'summarise',
+  'summarize',
+  'count',
+  'enumerate',
+  'outline',
+  'tldr',
+  'draft',
+  'stub',
 ];
 const MEDIUM_KEYWORDS = ['explain', 'reason'];
 const COMPLEX_KEYWORDS = [

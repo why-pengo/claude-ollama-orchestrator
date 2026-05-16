@@ -6,11 +6,11 @@ Routes generative tasks across three tiers — local Ollama, remote Ollama, and 
 
 Every request is assessed against three keyword lists:
 
-| Tier                 | Triggered by                                                                                                             | Node                              | Cost                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | --------------------- |
-| **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise`, `organize`                    | Local Ollama (e.g. mistral 7B)    | Free                  |
-| **Medium** (tier 2)  | `explain`, `reason`                                                                                                      | Remote Ollama (e.g. Llama 3.1 8B) | Free                  |
-| **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, `debug`, `refactor`, `design`, `implement`, `optimise`, `optimize` | Claude Code session               | Your Pro subscription |
+| Tier                 | Triggered by                                                                                                                                                                              | Node                              | Cost                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | --------------------- |
+| **Simple** (tier 1)  | `format`, `extract`, `convert`, `parse`, `sort`, `list`, `rename`, `template`, `organise`, `organize`, `summarise`, `summarize`, `count`, `enumerate`, `outline`, `tldr`, `draft`, `stub` | Local Ollama (e.g. mistral 7B)    | Free                  |
+| **Medium** (tier 2)  | `explain`, `reason`                                                                                                                                                                       | Remote Ollama (e.g. Llama 3.1 8B) | Free                  |
+| **Complex** (tier 3) | `architect`, `security`, `tradeoff`, `plan`, `clean`, `debug`, `refactor`, `design`, `implement`, `optimise`, `optimize`                                                                  | Claude Code session               | Your Pro subscription |
 
 Simple tasks stream tokens directly to your terminal. Medium tasks do too — when a remote Ollama node is configured and available; otherwise they cascade to Claude Code. Complex tasks always print a ready-to-paste prompt for your Claude Code session.
 
@@ -112,7 +112,7 @@ For simple generative tasks, run the Ollama orchestrator via Bash:
 
     node ${OLLAMA_ORCH_PATH} --simple --file <path> "<instruction>"
 
-**Send to Ollama (simple):** extract values · convert formats · parse/organise data · list items · rename fields
+**Send to Ollama (simple):** extract values · convert formats · parse/organise data · list items · rename fields · summarise threads · count occurrences · outline structure · draft messages · stub tests
 
 **Send to Ollama (medium — omit --simple flag):** explain · reason
 

@@ -13,3 +13,12 @@ export function logEntry(tag, message) {
   console.log(line);
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
+
+// File-only variant for the UserPromptSubmit hook: Claude Code injects hook
+// stdout into the next message as additionalContext, so a stdout log line
+// would show up as raw debug text in the model's view. logToFile keeps the
+// audit trail without polluting the prompt context.
+export function logToFile(tag, message) {
+  const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
+  fs.appendFileSync(LOG_FILE, line + '\n');
+}

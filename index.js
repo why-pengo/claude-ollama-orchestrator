@@ -89,11 +89,16 @@ export function parseArgs(rawArgs) {
   let filePath = null;
   let dryRun = false;
 
-  // Extract --simple / --complex (can appear anywhere)
+  // Extract --simple / --medium / --complex (can appear anywhere)
   const simpleIdx = remaining.indexOf('--simple');
   if (simpleIdx !== -1) {
     force = 'simple';
     remaining.splice(simpleIdx, 1);
+  }
+  const mediumIdx = remaining.indexOf('--medium');
+  if (mediumIdx !== -1) {
+    force = 'medium';
+    remaining.splice(mediumIdx, 1);
   }
   const complexIdx = remaining.indexOf('--complex');
   if (complexIdx !== -1) {
@@ -146,6 +151,7 @@ Usage:
 
 Force routing:
   node index.js --simple  "Format this JSON ..."
+  node index.js --medium  "Explain how this works ..."
   node index.js --complex "Design a microservice ..."
 
 Preview routing without executing:

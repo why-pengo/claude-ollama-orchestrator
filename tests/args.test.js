@@ -14,6 +14,14 @@ describe('parseArgs — force flags', () => {
       dryRun: false,
     }));
 
+  it('--medium sets force', () =>
+    assert.deepEqual(parseArgs(['--medium', 'explain this concept']), {
+      force: 'medium',
+      filePath: null,
+      promptText: 'explain this concept',
+      dryRun: false,
+    }));
+
   it('--complex sets force', () =>
     assert.deepEqual(parseArgs(['--complex', 'design an API']), {
       force: 'complex',
@@ -45,6 +53,14 @@ describe('parseArgs — --file flag', () => {
       force: 'simple',
       filePath: 'foo.py',
       promptText: 'extract routes',
+      dryRun: false,
+    }));
+
+  it('--medium before --file', () =>
+    assert.deepEqual(parseArgs(['--medium', '--file', 'docs.md', 'explain this section']), {
+      force: 'medium',
+      filePath: 'docs.md',
+      promptText: 'explain this section',
       dryRun: false,
     }));
 

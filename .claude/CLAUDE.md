@@ -44,7 +44,7 @@ The router checks **complex keywords first**, then medium, then simple. Complex 
 
 **Simple keywords** (→ Local Ollama, or tier 2 if oversized): `format, extract, convert, parse, organise, organize, list, template, rename, sort, summarise, summarize, count, enumerate, outline, tldr, draft, stub`
 
-**Medium keywords** (→ Remote Ollama): `explain, reason`
+**Medium keywords** (→ Remote Ollama): `explain, reason, compare, describe, walkthrough, walk through, tutorial, analyse, analyze`
 
 **Complex keywords** (→ Claude Code): `architect, security, tradeoff, plan, clean, debug, refactor, design, implement, optimise, optimize`
 
@@ -92,17 +92,27 @@ You are the planner. Watch for **mechanical sub-tasks during your work** and del
 
 ### When to delegate
 
-- About to **Read** a file >500 lines just to list function / class / route names → delegate
-- About to **write a regex** from a stated pattern → delegate
-- About to **draft an error message, log line, or short stub** → delegate
-- About to **summarise** a long PR diff, issue thread, or log file → delegate
-- About to **convert** data between formats (CSV ↔ JSON, etc.) → delegate
+Tier 1 (`--simple`, local mistral) — short, mechanical text transforms:
+
+- About to **Read** a file >500 lines just to list function / class / route names → `--simple`
+- About to **write a regex** from a stated pattern → `--simple`
+- About to **draft an error message, log line, or short stub** → `--simple`
+- About to **summarise** a long PR diff, issue thread, or log file → `--simple`
+- About to **convert** data between formats (CSV ↔ JSON, etc.) → `--simple`
+
+Tier 2 (`--medium`, remote qwen3.6) — longer prose / reasoning where mistral quality drops:
+
+- About to **explain** a concept, library API, or pattern in prose → `--medium`
+- About to **walk through** the reasoning behind a design choice → `--medium`
+- About to produce **long-form prose** (multi-paragraph descriptions, tutorials, comparisons) → `--medium`
 
 Invocation:
 
 ```bash
-node $OLLAMA_ORCH_PATH --simple --file <path> "<instruction>"   # with file context
-node $OLLAMA_ORCH_PATH --simple "<instruction>"                 # text-only
+node $OLLAMA_ORCH_PATH --simple --file <path> "<instruction>"   # tier 1, with file context
+node $OLLAMA_ORCH_PATH --simple "<instruction>"                 # tier 1, text-only
+node $OLLAMA_ORCH_PATH --medium --file <path> "<instruction>"   # tier 2, with file context
+node $OLLAMA_ORCH_PATH --medium "<instruction>"                 # tier 2, text-only
 ```
 
 ### When NOT to delegate
@@ -126,6 +136,9 @@ Add a task routing section to `.claude/CLAUDE.md` in the target project. Example
 
 For generative simple tasks (extract, convert, summarise), use:
   node $OLLAMA_ORCH_PATH --simple --file <path> "<prompt>"
+
+For generative medium tasks (explain, compare, walk through, describe, tutorial), use:
+  node $OLLAMA_ORCH_PATH --medium --file <path> "<prompt>"
 
 For complex tasks (debug, design, refactor), handle in Claude Code directly.
 Do NOT send deterministic operations (make format, black, npm test) to Ollama.

@@ -43,6 +43,24 @@ describe('assessComplexity — medium tasks', () => {
     assert.equal(assess('Explain the difference between TCP and UDP'), 'medium'));
   it('reason through options', () =>
     assert.equal(assess('Reason through these options'), 'medium'));
+  it('compare frameworks', () =>
+    assert.equal(assess('Compare React and Vue for this use case'), 'medium'));
+  it('describe behaviour', () =>
+    assert.equal(assess('Describe how the cache invalidation works'), 'medium'));
+  it('walkthrough (single word)', () =>
+    assert.equal(assess('Give me a walkthrough of the auth flow'), 'medium'));
+  it('walk through (two words)', () =>
+    assert.equal(assess('Walk through what happens on a cold start'), 'medium'));
+  it('tutorial request', () =>
+    assert.equal(assess('Tutorial on setting up the dev environment'), 'medium'));
+  it('analyse (British)', () =>
+    assert.equal(assess('Analyse the failure modes of this approach'), 'medium'));
+  it('analyze (American)', () =>
+    assert.equal(assess('Analyze the failure modes of this approach'), 'medium'));
+  it('analyse the security of X routes complex (security wins)', () =>
+    assert.equal(assess('Analyse the security of this authentication handler'), 'complex'));
+  it('analyze + refactor routes complex (refactor wins)', () =>
+    assert.equal(assess('Analyze and refactor this function'), 'complex'));
 });
 
 describe('assessComplexity — complex tasks', () => {

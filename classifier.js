@@ -25,7 +25,17 @@ const SIMPLE_KEYWORDS = [
   'draft',
   'stub',
 ];
-const MEDIUM_KEYWORDS = ['explain', 'reason'];
+const MEDIUM_KEYWORDS = [
+  'explain',
+  'reason',
+  'compare',
+  'describe',
+  'walkthrough',
+  'walk through',
+  'tutorial',
+  'analyse',
+  'analyze',
+];
 const COMPLEX_KEYWORDS = [
   'architect',
   'security',
